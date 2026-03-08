@@ -55,6 +55,8 @@ const PROP = {
   AUTO_EMPTY_FREQUENCY: { siid: 15, piid: 2 },
   MOP_PRESSURE:         { siid: 28, piid: 86 },
 
+  // Schedules
+  SCHEDULE:             { siid: 8, piid: 2 },
   // Read-only status
   CHARGING_STATUS:      { siid: 3, piid: 2 },
   DRYING_PROGRESS:      { siid: 4, piid: 64 },
@@ -213,6 +215,52 @@ const HOT_WATER_STATUS_MAP = { 0: 'disabled', 1: 'enabled' };
 // Dock cleaning status
 const DOCK_CLEANING_STATUS_MAP = { 0: 'idle', 1: 'cleaning', 2: 'drying' };
 
+// Schedule day names (repeats field is 7 chars: 1=active, 0=inactive, Mon-Sun)
+const SCHEDULE_DAY_NAMES = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+
+/**
+ * Parse the Dreame schedule string (SIID 8, PIID 2) into structured objects.
+ * Format per entry: id-enabled-time-repeats-once-map_id-suction-water-options
+ * Entries are separated by semicolons.
+ */
+function parseSchedules(raw) {
+  if (!raw || raw === '') return [];
+  const schedules = [];
+  const tasks = raw.split(';');
+  for (const task of tasks) {
+    const p = task.split('-');
+    if (p.length < 9) continue;
+    const enabledVal = p[1];
+    const repeats = p[3]; // 7-char string like "1111100"
+    const days = [];
+    if (repeats && repeats.length === 7) {
+      for (let i = 0; i < 7; i++) {
+        if (repeats[i] === '1') days.push(SCHEDULE_DAY_NAMES[i]);
+      }
+    }
+    schedules.push({
+      id: parseInt(p[0], 10),
+      enabled: enabledVal === '1' || enabledVal === '2',
+      invalid: enabledVal === '3',
+      time: p[2],
+      repeats,
+      days,
+      once: p[4] === '0',
+      mapId: p[5],
+      suctionLevel: parseInt(p[6], 10),
+      waterVolume: parseInt(p[7], 10),
+      options: p[8] !== '0' ? p[8] : null,
+    });
+  }
+  // Sort by time
+  schedules.sort((a, b) => {
+    const ta = a.time.replace(':', '');
+    const tb = b.time.replace(':', '');
+    return parseInt(ta, 10) - parseInt(tb, 10);
+  });
+  return schedules;
+}
+
 // Prop key to capability mapping for probe-based removal
 const PROP_TO_CAPABILITY = {
   '4-27': 'dreame_child_lock',
@@ -320,6 +368,7 @@ class DreameVacuumDevice extends Homey.Device {
     this._forceNextPoll = false;
     this._lastTriggeredError = null;
     this._consumableLowNotified = {};
+    this._schedules = [];
 
     // Ensure all capabilities are present (for devices paired before new capabilities were added)
     const requiredCapabilities = [
@@ -538,6 +587,9 @@ class DreameVacuumDevice extends Homey.Device {
           PROP.DIRTY_WATER_TANK,
           PROP.LOW_WATER_WARNING,
         );
+
+        // Schedules (every 12th cycle)
+        props.push(PROP.SCHEDULE);
 
         // Probeable consumables + lifetime stats (every 12th cycle)
         const probeableInfrequent = [
@@ -890,6 +942,10 @@ class DreameVacuumDevice extends Homey.Device {
 
           case '12-4': // TOTAL_CLEANED_AREA
             await this.setCapabilityValue('dreame_total_cleaned_area', value).catch(this.error);
+            break;
+
+          case '8-2': // SCHEDULE
+            this._schedules = parseSchedules(value);
             break;
         }
       }
@@ -1425,6 +1481,14 @@ class DreameVacuumDevice extends Homey.Device {
     this._lastCommandTime = Date.now();
     const api = this._getApi();
     await api.callAction(this._did, this._bindDomain, ACTION.START_AUTO_EMPTY.siid, ACTION.START_AUTO_EMPTY.aiid);
+  }
+
+  /**
+   * Get parsed cleaning schedules from the Dreame cloud.
+   * Returns cached list; updated every 12th poll cycle (~60s).
+   */
+  getSchedules() {
+    return this._schedules || [];
   }
 
   async resetConsumable(siid, aiid) {

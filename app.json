@@ -643,6 +643,40 @@
       },
       {
         "title": {
+          "en": "Cleaning schedule !{{is|is not}} enabled",
+          "nl": "Schoonmaakschema !{{is|is not}} ingeschakeld"
+        },
+        "titleFormatted": {
+          "en": "Cleaning schedule [[schedule]] !{{is|is not}} enabled",
+          "nl": "Schoonmaakschema [[schedule]] !{{is|is not}} ingeschakeld"
+        },
+        "hint": {
+          "en": "Check if a cleaning schedule from the Dreame app is enabled, disabled, or invalid.",
+          "nl": "Controleer of een schoonmaakschema uit de Dreame app is ingeschakeld, uitgeschakeld, of ongeldig."
+        },
+        "args": [
+          {
+            "name": "device",
+            "type": "device",
+            "filter": "driver_id=vacuum"
+          },
+          {
+            "type": "autocomplete",
+            "name": "schedule",
+            "title": {
+              "en": "Schedule",
+              "nl": "Schema"
+            },
+            "placeholder": {
+              "en": "Search schedules...",
+              "nl": "Zoek schema's..."
+            }
+          }
+        ],
+        "id": "schedule_is_enabled"
+      },
+      {
+        "title": {
           "en": "Water tank !{{is|is not}} installed"
         },
         "titleFormatted": {

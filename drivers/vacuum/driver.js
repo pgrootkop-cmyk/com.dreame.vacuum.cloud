@@ -232,6 +232,36 @@ class DreameVacuumDriver extends Homey.Driver {
       .registerRunListener(async (args) => {
         await args.device.clearWarning();
       });
+
+    // Schedule condition cards
+    const scheduleEnabledCard = this.homey.flow.getConditionCard('schedule_is_enabled');
+    scheduleEnabledCard.registerRunListener(async (args) => {
+      const schedules = args.device.getSchedules();
+      const schedule = schedules.find(s => s.id === parseInt(args.schedule.id, 10));
+      if (!schedule) return false;
+      return schedule.enabled;
+    });
+    scheduleEnabledCard.registerArgumentAutocompleteListener('schedule', async (query, args) => {
+      return this._getScheduleAutocomplete(query, args);
+    });
+
+  }
+
+  _getScheduleAutocomplete(query, args) {
+    const schedules = args.device ? args.device.getSchedules() : [];
+    const results = schedules.map(s => {
+      const status = s.invalid ? '(invalid)' : (s.enabled ? '(on)' : '(off)');
+      const days = s.days.length === 7 ? 'Daily' : (s.days.length === 0 ? 'Once' : s.days.join(', '));
+      const suction = { 0: 'Quiet', 1: 'Standard', 2: 'Strong', 3: 'Turbo' }[s.suctionLevel] || `L${s.suctionLevel}`;
+      return {
+        name: `${s.time} - ${days} ${status}`,
+        description: `Suction: ${suction}`,
+        id: String(s.id),
+      };
+    });
+    if (!query) return results;
+    const q = query.toLowerCase();
+    return results.filter(r => r.name.toLowerCase().includes(q));
   }
 
   async onPair(session) {
