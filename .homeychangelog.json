@@ -24,6 +24,6 @@
     "en": "extra debugging logs"
   },
   "0.0.9": {
-    "en": "Manual room ID flow cards and improved diagnostics\n- New flow cards to clean rooms by ID as alternative to autocomplete (single room, multi-room, triggers, condition)\n- Useful when room auto-discovery has not completed yet\n- Improved map/room discovery diagnostic logging for troubleshooting\n- Sentry extras now correctly included in diagnostic events\n- Automatic HTTP fallback when MQTT map response times out\n- Removed Dutch (NL) translations to reduce translation burden and improve dev speed"
+    "en": "Manual room ID flow cards and improved diagnostics\n- New flow cards to clean rooms by ID as alternative to autocomplete (single room, multi-room, triggers, condition)\n- Useful when room auto-discovery has not completed yet\n- Improved map/room discovery diagnostic logging for troubleshooting\n- Sentry extras now correctly included in diagnostic events\n- Automatic HTTP fallback when MQTT map response times out\n- Removed Dutch (NL) translations to reduce translation burden and improve dev speed\n- Region selector in pairing screen (select your Dreame Home region + login in one step)\n- Sentry diagnostic logging for pairing and device discovery errors"
   }
 }

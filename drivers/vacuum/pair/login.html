@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html>
+<head></head>
+<body>
+  <form class="homey-form">
+    <fieldset class="homey-form-fieldset">
+      <legend class="homey-form-legend">Dreame Home Region</legend>
+      <div class="homey-form-group">
+        <label class="homey-form-label" for="region">Region selected during Dreame Home signup</label>
+        <select class="homey-form-select" id="region">
+          <option value="eu" selected>Europe</option>
+          <option value="cn">China</option>
+          <option value="de">Germany (EU)</option>
+          <option value="us">United States</option>
+          <option value="sg">Singapore</option>
+          <option value="kr">South Korea</option>
+        </select>
+      </div>
+    </fieldset>
+    <fieldset class="homey-form-fieldset">
+      <legend class="homey-form-legend">Dreame Account</legend>
+      <div class="homey-form-group">
+        <label class="homey-form-label" for="username">Email</label>
+        <input class="homey-form-input" type="text" id="username" placeholder="you@example.com" inputmode="email" autocomplete="email" />
+      </div>
+      <div class="homey-form-group">
+        <label class="homey-form-label" for="password">Password</label>
+        <input class="homey-form-input" type="password" id="password" placeholder="Password" autocomplete="current-password" />
+      </div>
+    </fieldset>
+    <button class="homey-button-primary-full" id="submit" type="button">Log in</button>
+  </form>
+  <script>
+    var btn = document.getElementById('submit');
+
+    btn.addEventListener('click', function () {
+      var username = document.getElementById('username').value.trim();
+      var password = document.getElementById('password').value;
+      var region = document.getElementById('region').value;
+
+      if (!username || !password) {
+        Homey.alert('Please enter your email and password.');
+        return;
+      }
+
+      btn.classList.add('is-loading');
+      btn.disabled = true;
+
+      Homey.emit('login', { username: username, password: password, region: region })
+        .then(function () {
+          Homey.showView('list_devices');
+        })
+        .catch(function (err) {
+          btn.classList.remove('is-loading');
+          btn.disabled = false;
+          Homey.alert(err.message || 'Login failed');
+        });
+    });
+  </script>
+</body>
+</html>

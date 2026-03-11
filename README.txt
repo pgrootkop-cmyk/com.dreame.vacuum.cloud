@@ -5,7 +5,7 @@ Have a Matter-compatible Dreame vacuum? Try Dreame Matter Cleaner (https://homey
 **Usage**
 - Install this app on your Homey
 - Add a device and select Dreame > Robot Vacuum
-- Log in with your Dreame Home account credentials
+- Select your Dreame Home region, enter your email and password, and log in
 - Select your robot vacuum from the list
 
 Only email/password login is supported. Third-party login (Google, Apple, etc.) is not supported.

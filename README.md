@@ -12,7 +12,7 @@ Control your Dreame robot vacuum with Homey via the Dreame Home cloud API.
 
 1. Install the app from the Homey App Store
 2. Add a device and select **Dreame** > **Robot Vacuum**
-3. Log in with your Dreame Home account credentials
+3. Select your Dreame Home region, enter your email and password, and log in
 4. Select your robot vacuum from the list
 
 > **Important:** Only email/password login is supported. Third-party login (Google, Apple, etc.) is not supported.

@@ -309,14 +309,10 @@ class DreameVacuumDriver extends Homey.Driver {
     let api = null;
     let country = 'eu';
 
-    session.setHandler('set_region', async (region) => {
-      country = region || 'eu';
-      this.log('Region selected for pairing:', country);
-    });
-
     session.setHandler('login', async (data) => {
       const username = data.username;
       const password = data.password;
+      country = data.region || 'eu';
 
       api = new DreameApi({ username, password, country });
 
