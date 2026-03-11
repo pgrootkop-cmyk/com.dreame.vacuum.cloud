@@ -44,7 +44,7 @@ If you signed up using Google, Apple, or another third-party login, you need to 
 | **Dock Features** | Auto Empty, Self Clean, Drying, Draining |
 | **Consumables** | Main Brush, Side Brush, Filter, Mop Pad, Sensor (with reset) |
 | **Sensors** | Battery, Cleaned Area, Cleaning Time, Total Cleaned Area, Error Status |
-| **Room Cleaning** | Room discovery via MQTT + cloud map download. Single/multi-room cleaning with autocomplete selection, per-room suction/water/repeats. Per-room trigger cards (start/finish) |
+| **Room Cleaning** | Room discovery via MQTT + cloud map download. Single/multi-room cleaning with autocomplete selection or manual room ID entry, per-room suction/water/repeats. Per-room trigger cards (start/finish) |
 | **Dashboard Widget** | Live vacuum map widget with room colors, room labels, robot & charger position, battery status, and cleaning progress |
 | **App Settings** | Device overview with rendered map, status grid, room list, and consumable health bars |
 | **Carpet** | Carpet Boost toggle, Carpet Sensitivity (Low/Medium/High), Carpet Cleaning mode (Avoidance/Adaptation/Remove Mop/Vacuum & Mop/Ignore) |
@@ -53,7 +53,7 @@ If you signed up using Google, Apple, or another third-party login, you need to 
 | **Status** | Charging Status, Dock Cleaning Status, Drying Progress, Drainage Status, Detergent Status, Hot Water Status, Water Tank, Dirty Water Tank, Dust Bag |
 | **Real-time MQTT** | Persistent connection to Dreame MQTT broker for instant property updates and room discovery. All 35+ properties pushed via MQTT — ~80% fewer API calls |
 | **Adaptive Polling** | Automatic poll interval adjustment: 60s idle / 15s cleaning with MQTT, 5s fallback without. MQTT health monitoring with automatic fast-poll recovery |
-| **Flow Cards** | 29 action cards, 16 condition cards, 5 trigger cards |
+| **Flow Cards** | 31 action cards, 17 condition cards, 7 trigger cards |
 
 ## Not Supported
 

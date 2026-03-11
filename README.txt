@@ -27,14 +27,14 @@ We recommend using a separate Dreame Home account for Homey to avoid potential s
 - Consumable Monitoring: Main Brush, Side Brush, Filter, Mop Pad, Sensor (with reset via flow cards)
 - Real-time MQTT: Persistent connection to Dreame cloud for instant state updates and room discovery. All 35+ properties pushed via MQTT
 - Adaptive Polling: 60s idle / 15s cleaning with MQTT, 5s fallback without. Automatic health monitoring
-- Room Cleaning: Single room or multi-room by ID with suction/water/repeats, per-room trigger cards
+- Room Cleaning: Single room or multi-room with autocomplete or manual room ID entry, per-room suction/water/repeats, per-room trigger cards
 - Dashboard Widget: Vacuum map with room colors, labels, robot & charger position, status bar
 - App Settings: Device overview with rendered map, status grid, room list, consumable health bars
 - Carpet: Boost toggle, Sensitivity (Low/Medium/High), Cleaning mode (Avoidance/Adaptation/Remove Mop/Vacuum & Mop/Ignore)
 - Dock Settings: Mop Wash Level, Water Temperature, Auto Empty Frequency, Mop Pressure, Drying Time, Volume
 - Toggles: Child Lock, Resume Cleaning, Tight Mopping, Silent Drying, DND
 - Status: Battery, Cleaned Area, Cleaning Time, Total Cleaned Area, Error, Charging, Dock Cleaning, Drying Progress, Drainage, Detergent, Hot Water, Water Tank, Dirty Water Tank, Dust Bag
-- Flow Cards: 29 actions, 16 conditions, 5 triggers
+- Flow Cards: 31 actions, 17 conditions, 7 triggers
 
 **Not Supported**
 Some features from the Dreame Home app or Tasshack/dreame-vacuum (Home Assistant) cannot be implemented on Homey:
