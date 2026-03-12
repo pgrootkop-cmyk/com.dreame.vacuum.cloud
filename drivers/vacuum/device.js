@@ -1042,8 +1042,9 @@ class DreameVacuumDevice extends Homey.Device {
     }
 
     // Cache map data for future widget use (object name + dimensions)
+    // Append encryption key after comma so app.js _decodeMapData can decrypt
     this.setStoreValue('mapObjectName', objectName).catch(this.error);
-    this.setStoreValue('mapRawBase64', mapStr).catch(this.error);
+    this.setStoreValue('mapRawBase64', mapKey ? mapStr + ',' + mapKey : mapStr).catch(this.error);
   }
 
   /**
