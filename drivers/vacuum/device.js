@@ -410,7 +410,7 @@ function extractRoomsFromSegInf(segInf, log) {
   return rooms;
 }
 
-function parseMapRooms(raw, logger) {
+function parseMapRooms(raw, logger, aesKey) {
   const log = logger || (() => {});
   if (!raw || raw === '') {
     return [];
@@ -422,13 +422,11 @@ function parseMapRooms(raw, logger) {
     // URL-safe base64 → standard base64
     mapStr = mapStr.replace(/_/g, '/').replace(/-/g, '+');
 
-    // Key may be appended after comma
-    let aesKey = null;
-    if (mapStr.includes(',')) {
+    // Key may be appended after comma (inline MQTT data)
+    if (!aesKey && mapStr.includes(',')) {
       const parts = mapStr.split(',');
       mapStr = parts[0];
       aesKey = parts[1];
-      // AES key found, will decrypt
     }
 
     let buf = Buffer.from(mapStr, 'base64');
@@ -1008,12 +1006,21 @@ class DreameVacuumDevice extends Homey.Device {
    * Download map data from Dreame cloud using the object path from MQTT 6-3.
    */
   async _downloadMapData(objectName) {
+    // Some models append an encryption key after a comma (e.g. "ali_dreame/.../0,key")
+    let filePath = objectName;
+    let mapKey = null;
+    if (objectName && objectName.includes(',')) {
+      const parts = objectName.split(',');
+      filePath = parts[0];
+      mapKey = parts[1];
+    }
+
     const api = this._getApi();
     const model = this.getStoreValue('model') || '';
-    const buffer = await api.getMapData(this._did, objectName, model);
+    const buffer = await api.getMapData(this._did, filePath, model);
 
     const mapStr = buffer.toString('utf8');
-    const rooms = parseMapRooms(mapStr, this.log.bind(this));
+    const rooms = parseMapRooms(mapStr, this.log.bind(this), mapKey);
     this._diag(`[MAP] Parsed ${rooms.length} rooms from map data`, null, 'debug');
     if (rooms.length > 0) {
       this._rooms = rooms;
