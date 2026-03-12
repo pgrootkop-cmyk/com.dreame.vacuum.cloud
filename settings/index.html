@@ -3,61 +3,61 @@
 <head>
   <script type="text/javascript" src="/homey.js" data-origin="settings"></script>
   <style>
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; color: #333; padding: 16px; background: #fff; }
-    h2 { font-size: 18px; font-weight: 600; margin-bottom: 12px; }
-    h3 { font-size: 13px; font-weight: 600; margin: 16px 0 8px; color: #888; text-transform: uppercase; letter-spacing: 0.5px; }
-    .device-select { width: 100%; padding: 10px 12px; font-size: 15px; border: 1px solid #ddd; border-radius: 8px; margin-bottom: 16px; background: #fafafa; }
-    .card { background: #f8f8f8; border-radius: 12px; padding: 16px; margin-bottom: 12px; }
-    .map-wrap { text-align: center; background: #1a1a2e; border-radius: 12px; padding: 8px; margin-bottom: 12px; min-height: 80px; }
+    .map-wrap { text-align: center; background: #eee; border-radius: 12px; padding: 8px; margin-bottom: 16px; min-height: 80px; }
     .map-wrap canvas { max-width: 100%; height: auto; border-radius: 6px; }
-    .no-data { color: #999; padding: 32px 0; font-size: 13px; text-align: center; }
-    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
-    .stat { padding: 8px 10px; background: #fff; border-radius: 8px; border: 1px solid #eee; }
+    .no-data { color: #999; padding: 24px 0; font-size: 13px; text-align: center; }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-bottom: 16px; }
+    .stat { padding: 8px 10px; background: var(--homey-background-color, #f8f8f8); border-radius: 8px; border: 1px solid var(--homey-border-color, #eee); }
     .stat-label { font-size: 10px; color: #999; text-transform: uppercase; }
     .stat-value { font-size: 15px; font-weight: 600; margin-top: 1px; }
     .good { color: #34c759; } .warn { color: #ff9500; } .bad { color: #ff3b30; }
-    .room-list { list-style: none; }
-    .room-list li { padding: 7px 10px; background: #fff; border-radius: 6px; margin-bottom: 3px; border: 1px solid #eee; font-size: 13px; display: flex; justify-content: space-between; }
+    .room-list { list-style: none; padding: 0; margin: 0 0 16px; }
+    .room-list li { padding: 7px 10px; background: var(--homey-background-color, #fff); border-radius: 6px; margin-bottom: 3px; border: 1px solid var(--homey-border-color, #eee); font-size: 13px; display: flex; justify-content: space-between; }
     .room-id { color: #aaa; font-size: 11px; }
     .cons-row { margin-bottom: 8px; }
     .cons-header { display: flex; justify-content: space-between; font-size: 12px; margin-bottom: 3px; }
     .cons-bar { height: 5px; background: #eee; border-radius: 3px; overflow: hidden; }
     .cons-fill { height: 100%; border-radius: 3px; }
-    .toggle-row { display: flex; justify-content: space-between; align-items: center; padding: 10px 0; }
-    .toggle-label { font-size: 14px; }
-    .toggle-desc { font-size: 11px; color: #999; margin-top: 2px; }
-    .toggle-switch { position: relative; width: 44px; height: 26px; flex-shrink: 0; }
-    .toggle-switch input { opacity: 0; width: 0; height: 0; }
-    .toggle-slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background: #ccc; border-radius: 26px; transition: .2s; }
-    .toggle-slider:before { content: ""; position: absolute; height: 20px; width: 20px; left: 3px; bottom: 3px; background: #fff; border-radius: 50%; transition: .2s; }
-    .toggle-switch input:checked + .toggle-slider { background: #007aff; }
-    .toggle-switch input:checked + .toggle-slider:before { transform: translateX(18px); }
   </style>
 </head>
 <body>
-  <h2>Dreame Vacuum</h2>
-  <div class="card">
-    <h3>Diagnostics</h3>
-    <div class="toggle-row">
-      <div>
-        <div class="toggle-label">Share diagnostic logs</div>
-        <div class="toggle-desc">Send MQTT and connection logs to help improve app stability. No personal data is collected.</div>
-      </div>
-      <label class="toggle-switch">
-        <input type="checkbox" id="diagnosticToggle" onchange="toggleDiagnostic()">
-        <span class="toggle-slider"></span>
+  <form class="homey-form">
+    <fieldset class="homey-form-fieldset">
+      <legend class="homey-form-legend">Diagnostics</legend>
+      <label class="homey-form-checkbox">
+        <input class="homey-form-checkbox-input" type="checkbox" id="diagnosticToggle" onchange="toggleDiagnostic()" />
+        <span class="homey-form-checkbox-checkmark"></span>
+        <span class="homey-form-checkbox-text">Share diagnostic logs to help improve app stability. No personal data is collected.</span>
       </label>
-    </div>
-  </div>
-  <select class="device-select" id="deviceSelect" onchange="selectDevice()">
-    <option value="">Loading...</option>
-  </select>
+    </fieldset>
+
+    <fieldset class="homey-form-fieldset">
+      <legend class="homey-form-legend">Device</legend>
+      <div class="homey-form-group">
+        <select class="homey-form-select" id="deviceSelect" onchange="selectDevice()">
+          <option value="">Loading...</option>
+        </select>
+      </div>
+    </fieldset>
+  </form>
+
   <div id="content" style="display:none;">
     <div class="map-wrap"><canvas id="mapCanvas" style="display:none;"></canvas><div class="no-data" id="noMap">No map data</div></div>
-    <div class="card"><h3>Status</h3><div class="grid" id="statusGrid"></div></div>
-    <div class="card"><h3>Rooms</h3><ul class="room-list" id="roomList"></ul></div>
-    <div class="card"><h3>Consumables</h3><div id="consumables"></div></div>
+
+    <fieldset class="homey-form-fieldset">
+      <legend class="homey-form-legend">Status</legend>
+      <div class="grid" id="statusGrid"></div>
+    </fieldset>
+
+    <fieldset class="homey-form-fieldset">
+      <legend class="homey-form-legend">Rooms</legend>
+      <ul class="room-list" id="roomList"></ul>
+    </fieldset>
+
+    <fieldset class="homey-form-fieldset">
+      <legend class="homey-form-legend">Consumables</legend>
+      <div id="consumables"></div>
+    </fieldset>
   </div>
   <div class="no-data" id="loading">Loading...</div>
 
@@ -66,7 +66,6 @@ var _homey, _devices = [], _did = null;
 
 function onHomeyReady(Homey) {
   _homey = Homey;
-  // Load diagnostic toggle state
   Homey.get('diagnosticLogging', function(err, val) {
     document.getElementById('diagnosticToggle').checked = val === true;
   });
@@ -141,6 +140,54 @@ function consumables(d) {
   }).join('');
 }
 
+// Shared map renderer (keep in sync with widget)
+function renderMapToCanvas(canvas, data, options) {
+  var opts = options || {};
+  var showRoomNames = opts.showRoomNames !== false;
+  var w = data.width, h = data.height;
+  var raw = atob(data.pixels);
+  var scale = Math.max(1, Math.min(3, Math.floor(800 / Math.max(w, h))));
+  canvas.width = w * scale;
+  canvas.height = h * scale;
+  var ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#eee';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  var off = document.createElement('canvas');
+  off.width = w; off.height = h;
+  var offCtx = off.getContext('2d');
+  var img = offCtx.createImageData(w, h);
+  for (var i = 0; i < raw.length; i++) img.data[i] = raw.charCodeAt(i);
+  offCtx.putImageData(img, 0, 0);
+  ctx.imageSmoothingEnabled = false;
+  ctx.drawImage(off, 0, 0, w * scale, h * scale);
+  if (data.chargerPos && data.chargerPos.x > 0) {
+    ctx.beginPath();
+    ctx.arc(data.chargerPos.x * scale, data.chargerPos.y * scale, Math.max(3, scale * 2), 0, Math.PI * 2);
+    ctx.fillStyle = '#ff9500'; ctx.fill();
+    ctx.strokeStyle = '#fff'; ctx.lineWidth = Math.max(1, scale * 0.5); ctx.stroke();
+  }
+  if (data.robotPos && data.robotPos.x > 0) {
+    ctx.beginPath();
+    ctx.arc(data.robotPos.x * scale, data.robotPos.y * scale, Math.max(4, scale * 2.5), 0, Math.PI * 2);
+    ctx.fillStyle = '#007aff'; ctx.fill();
+    ctx.strokeStyle = '#fff'; ctx.lineWidth = Math.max(1, scale * 0.5); ctx.stroke();
+  }
+  if (showRoomNames && data.roomLabels && data.roomLabels.length > 0) {
+    var fontSize = Math.max(9, Math.min(13, scale * 4));
+    ctx.font = '600 ' + fontSize + 'px -apple-system, BlinkMacSystemFont, sans-serif';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    var sw = Math.max(2, scale);
+    for (var j = 0; j < data.roomLabels.length; j++) {
+      var label = data.roomLabels[j];
+      var lx = label.x * scale, ly = label.y * scale;
+      ctx.strokeStyle = 'rgba(255,255,255,0.85)'; ctx.lineWidth = sw; ctx.lineJoin = 'round';
+      ctx.strokeText(label.name, lx, ly);
+      ctx.fillStyle = 'rgba(15,15,15,0.9)';
+      ctx.fillText(label.name, lx, ly);
+    }
+  }
+}
+
 function map(d) {
   var canvas = document.getElementById('mapCanvas');
   var noMap = document.getElementById('noMap');
@@ -153,62 +200,7 @@ function map(d) {
       noMap.textContent = 'No map data available';
       return;
     }
-    var w = data.width, h = data.height;
-    var raw = atob(data.pixels);
-
-    // Scale up for crisp rendering with labels
-    var scale = Math.max(1, Math.min(3, Math.floor(800 / Math.max(w, h))));
-    canvas.width = w * scale;
-    canvas.height = h * scale;
-    var ctx = canvas.getContext('2d');
-
-    // Draw raw pixels on offscreen canvas, then scale up
-    var off = document.createElement('canvas');
-    off.width = w; off.height = h;
-    var offCtx = off.getContext('2d');
-    var img = offCtx.createImageData(w, h);
-    for (var i = 0; i < raw.length; i++) img.data[i] = raw.charCodeAt(i);
-    offCtx.putImageData(img, 0, 0);
-    ctx.imageSmoothingEnabled = false;
-    ctx.drawImage(off, 0, 0, w * scale, h * scale);
-
-    // Draw charger position
-    if (data.chargerPos && data.chargerPos.x > 0) {
-      ctx.beginPath();
-      ctx.arc(data.chargerPos.x * scale, data.chargerPos.y * scale, Math.max(3, scale * 2), 0, Math.PI * 2);
-      ctx.fillStyle = '#ff9500';
-      ctx.fill();
-      ctx.strokeStyle = '#fff';
-      ctx.lineWidth = Math.max(1, scale * 0.5);
-      ctx.stroke();
-    }
-
-    // Draw robot position
-    if (data.robotPos && data.robotPos.x > 0) {
-      ctx.beginPath();
-      ctx.arc(data.robotPos.x * scale, data.robotPos.y * scale, Math.max(4, scale * 2.5), 0, Math.PI * 2);
-      ctx.fillStyle = '#007aff';
-      ctx.fill();
-      ctx.strokeStyle = '#fff';
-      ctx.lineWidth = Math.max(1, scale * 0.5);
-      ctx.stroke();
-    }
-
-    // Draw room labels
-    if (data.roomLabels && data.roomLabels.length > 0) {
-      var fontSize = Math.max(9, Math.min(13, scale * 4));
-      ctx.font = '600 ' + fontSize + 'px -apple-system, BlinkMacSystemFont, sans-serif';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      for (var j = 0; j < data.roomLabels.length; j++) {
-        var label = data.roomLabels[j];
-        ctx.fillStyle = 'rgba(0,0,0,0.5)';
-        ctx.fillText(label.name, label.x * scale + 1, label.y * scale + 1);
-        ctx.fillStyle = '#fff';
-        ctx.fillText(label.name, label.x * scale, label.y * scale);
-      }
-    }
-
+    renderMapToCanvas(canvas, data, { showRoomNames: true });
     canvas.style.display = 'block';
     noMap.style.display = 'none';
   });

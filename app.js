@@ -8,12 +8,12 @@ const crypto = require('crypto');
 const DreameApi = require('./lib/DreameApi');
 const DreameMqtt = require('./lib/DreameMqtt');
 
+// Dreame Light color scheme (matches Tasshack/dreame-vacuum)
 const SEGMENT_COLORS = [
   [171, 199, 248], [249, 224, 125], [184, 227, 255], [184, 217, 141],
-  [218, 182, 252], [252, 194, 176], [176, 228, 212], [228, 212, 176],
 ];
-const WALL_COLOR = [120, 120, 130];
-const FLOOR_COLOR = [200, 200, 210];
+const WALL_COLOR = [159, 159, 159];
+const FLOOR_COLOR = [221, 221, 221];
 const NEW_SEGMENT_COLOR = [153, 191, 255];
 const MAP_HEADER_SIZE = 27;
 
