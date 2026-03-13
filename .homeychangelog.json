@@ -40,5 +40,11 @@
   },
   "0.0.15": {
     "en": "fix proper decryption of maps for some models (incl L20 ultra)"
+  },
+  "0.0.17": {
+    "en": "new cards"
+  },
+  "0.0.18": {
+    "en": "fix map wrongly flipped vertically"
   }
 }

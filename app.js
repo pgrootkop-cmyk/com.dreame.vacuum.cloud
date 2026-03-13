@@ -367,7 +367,7 @@ class DreameApp extends Homey.App {
         for (let x = 0; x < width; x++) {
           const pi = MAP_HEADER_SIZE + (y * width + x);
           const px = buf[pi] || 0;
-          const oi = (y * width + x) * 4;
+          const oi = ((height - 1 - y) * width + x) * 4;
 
           if (px === 0) continue; // Outside - transparent
 
@@ -390,12 +390,13 @@ class DreameApp extends Homey.App {
                 : (pxType.id - 1) % SEGMENT_COLORS.length;
               col = SEGMENT_COLORS[colorIdx];
               // Track bounds for room labels
-              if (!segBounds[pxType.id]) segBounds[pxType.id] = { minX: x, maxX: x, minY: y, maxY: y, count: 0 };
+              const flippedY = height - 1 - y;
+              if (!segBounds[pxType.id]) segBounds[pxType.id] = { minX: x, maxX: x, minY: flippedY, maxY: flippedY, count: 0 };
               const b = segBounds[pxType.id];
               if (x < b.minX) b.minX = x;
               if (x > b.maxX) b.maxX = x;
-              if (y < b.minY) b.minY = y;
-              if (y > b.maxY) b.maxY = y;
+              if (flippedY < b.minY) b.minY = flippedY;
+              if (flippedY > b.maxY) b.maxY = flippedY;
               b.count++;
               break;
             }
@@ -436,13 +437,13 @@ class DreameApp extends Homey.App {
         if (rX !== 32767 && rY !== 32767 && gridSize > 0) {
           robotPos = {
             x: Math.round((rX - left) / gridSize),
-            y: Math.round((rY - top) / gridSize),
+            y: height - 1 - Math.round((rY - top) / gridSize),
           };
         }
         if (cX !== 32767 && cY !== 32767 && gridSize > 0) {
           chargerPos = {
             x: Math.round((cX - left) / gridSize),
-            y: Math.round((cY - top) / gridSize),
+            y: height - 1 - Math.round((cY - top) / gridSize),
           };
         }
       }
