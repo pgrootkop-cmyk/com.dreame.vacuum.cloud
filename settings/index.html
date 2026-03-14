@@ -212,12 +212,10 @@ function drawSettingsRobotDot(robotPos) {
 
 function startSettingsPolling() {
   if (_settingsPollTimer || !_did) return;
+  // Fetch position immediately (don't wait 5s)
+  fetchRobotPosition();
   _settingsPollTimer = setInterval(function() {
-    _homey.api('GET', '/robotPosition?did=' + encodeURIComponent(_did), null, function(err, pos) {
-      if (!err && pos && pos.x !== undefined) {
-        drawSettingsRobotDot(pos);
-      }
-    });
+    fetchRobotPosition();
     // Refresh status too
     _homey.api('GET', '/vacuumData', null, function(err, data) {
       if (err || !data || !data.length) return;
@@ -225,12 +223,20 @@ function startSettingsPolling() {
       if (!d) return;
       status(d); rooms(d); consumables(d);
       var state = (d.capabilities || {}).vacuumcleaner_state || 'unknown';
-      if (state !== 'cleaning') {
+      if (state === 'charging') {
         clearInterval(_settingsPollTimer);
         _settingsPollTimer = null;
       }
     });
   }, 5000);
+}
+
+function fetchRobotPosition() {
+  _homey.api('GET', '/robotPosition?did=' + encodeURIComponent(_did), null, function(err, pos) {
+    if (!err && pos && pos.x !== undefined) {
+      drawSettingsRobotDot(pos);
+    }
+  });
 }
 
 function map(d) {
@@ -249,9 +255,9 @@ function map(d) {
     canvas.style.display = 'block';
     noMap.style.display = 'none';
 
-    // Start polling if cleaning
+    // Start polling if robot is active (cleaning or docked/returning)
     var state = (d.capabilities || {}).vacuumcleaner_state || 'unknown';
-    if (state === 'cleaning') startSettingsPolling();
+    if (state !== 'charging') startSettingsPolling();
   });
 }
 
