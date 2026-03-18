@@ -697,6 +697,7 @@ class DreameVacuumDevice extends Homey.Device {
     this._operationalState = 'idle'; // track detailed state for triggers
     this._isStuck = false;           // track stuck status for triggers
     this._lastDreameState = 0;       // track raw Dreame state for zone/segment detection
+    this._wasZoneCleaning = false;   // track zone cleaning across state transitions (34→5→6)
     this._lastWaterTankInstalled = null; // track water tank for change triggers
     this._robotPositionRaw = null;    // live robot position (raw Dreame coords) from P-frames
     this._robotCurrentRoomId = null;  // segment ID the robot is currently in
@@ -1320,6 +1321,8 @@ class DreameVacuumDevice extends Homey.Device {
           const prevState = this.getCapabilityValue('vacuumcleaner_state');
           const prevDreameState = this._lastDreameState || 0;
           this._lastDreameState = value;
+          // Track zone cleaning across state transitions (ZONE_CLEANING→RETURNING→CHARGING)
+          if (value === 34) this._wasZoneCleaning = true;
           await this.setCapabilityValue('vacuumcleaner_state', homeyState).catch(this.error);
           await this.setCapabilityValue('onoff', homeyState === 'cleaning').catch(this.error);
           // Start/stop periodic map refresh during cleaning
@@ -1339,12 +1342,14 @@ class DreameVacuumDevice extends Homey.Device {
               const finishedCard = this.homey.flow.getDeviceTriggerCard('cleaning_finished');
               finishedCard.trigger(this, { cleaned_area: area, cleaning_time: time })
                 .catch(e => this.error('Cleaning finished trigger:', e));
-              // Fire zone_cleaning_finished if previous state was ZONE_CLEANING (34)
-              if (prevDreameState === 34) {
+              // Fire zone_cleaning_finished if this session included zone cleaning
+              // (tracks across ZONE_CLEANING(34) → RETURNING(5) → CHARGING(6))
+              if (this._wasZoneCleaning) {
                 const zoneName = this._lastZoneName || '';
                 const zoneFinishedCard = this.homey.flow.getDeviceTriggerCard('zone_cleaning_finished');
                 zoneFinishedCard.trigger(this, { cleaned_area: area, cleaning_time: time, zone_name: zoneName }, { zone_name: zoneName })
                   .catch(e => this.error('Zone cleaning finished trigger:', e));
+                this._wasZoneCleaning = false;
                 this._lastZoneName = null;
               }
             }

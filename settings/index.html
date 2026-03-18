@@ -521,15 +521,20 @@ function startSettingsPolling() {
 }
 
 function refreshMap() {
-  _homey.api('GET', '/renderedMap?did=' + encodeURIComponent(_did), null, function(err, data) {
+  // Respect the currently selected floor — don't fall back to device's active floor
+  var url = '/renderedMap?did=' + encodeURIComponent(_did);
+  var d = _devices.find(function(x) { return x.id === _did; });
+  if (_currentFloorId && d && String(_currentFloorId) !== String(d.selectedFloorId)) {
+    url += '&floorId=' + encodeURIComponent(_currentFloorId);
+  }
+  _homey.api('GET', url, null, function(err, data) {
     if (err || !data || !data.width) return;
     var canvas = document.getElementById('mapCanvas');
-    // Save live position before re-render (renderMapToCanvas uses stale header position)
     var livePos = _mapState.lastRobotPos;
     renderMapToCanvas(canvas, data, { showRoomNames: true });
-    // Restore live position instead of stale header position
     if (livePos) drawSettingsRobotDot(livePos);
     canvas.style.display = 'block';
+    canvas.style.transform = _rotation ? 'rotate(' + _rotation + 'deg)' : '';
     document.getElementById('noMap').style.display = 'none';
   });
 }

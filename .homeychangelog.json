@@ -1,4 +1,7 @@
 {
+  "0.0.28": {
+    "en": "Multi-floor and zone trigger fixes\n- Fixed: multi-room autocomplete now shows rooms from all floors (was single floor only)\n- Fixed: 'Zone cleaning finished' trigger now fires correctly (was missed due to state transitions ZONE_CLEANING→RETURNING→CHARGING)\n- Fixed: settings map falling back to floor 1 after a few seconds when viewing floor 2 (periodic refresh now respects selected floor)\n- Fixed: map rotation re-applied after periodic map refreshes"
+  },
   "0.0.27": {
     "en": "Multi-floor UX improvements, zone-specific triggers, map rotation in settings\n- Room autocomplete in action cards now shows rooms from ALL floors with floor labels\n- Floor selection in app settings persists across page visits\n- Map rotation dropdown added to app settings (0°/90°/180°/270°)\n- Zone cleaning finished trigger now includes zone name token and optional zone filter\n- Users can create flows like 'When Zone X is finished → Pause'\n- Zone name tracked from flow card through to completion trigger"
   },

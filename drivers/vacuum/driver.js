@@ -607,40 +607,57 @@ class DreameVacuumDriver extends Homey.Driver {
   }
 
   _getMultiRoomAutocomplete(query, args) {
-    const rooms = args.device ? args.device.getRooms() : [];
-    if (rooms.length === 0) {
+    const floors = args.device ? args.device.getFloors() : [];
+    const hasMultiFloor = floors.length > 1;
+    const allRooms = args.device && hasMultiFloor
+      ? args.device.getAllFloorRooms()
+      : (args.device ? args.device.getRooms() : []).map(r => ({ ...r, floorId: null, floorName: null }));
+
+    if (allRooms.length === 0) {
       return [{ name: 'No rooms discovered yet', description: 'Rooms appear after the vacuum maps your home', id: '_none' }];
     }
 
-    const floorLabel = this._getFloorLabel(args);
     const results = [];
 
-    // Add "All rooms" option
-    const allIds = rooms.map(r => r.id).join(',');
-    const allNames = rooms.map(r => r.name).join(', ');
-    results.push({
-      name: 'All rooms',
-      description: floorLabel ? `${floorLabel} — ${allNames}` : allNames,
-      id: allIds,
-    });
+    if (hasMultiFloor) {
+      // Per-floor "All rooms on <floor>" options
+      for (const floor of floors) {
+        const floorRooms = allRooms.filter(r => r.floorId === floor.id);
+        if (floorRooms.length > 0) {
+          results.push({
+            name: `All rooms on ${floor.name}`,
+            description: floorRooms.map(r => r.name).join(', '),
+            id: floorRooms.map(r => r.id).join(','),
+          });
+        }
+      }
+    } else {
+      // Single floor "All rooms"
+      const allIds = allRooms.map(r => r.id).join(',');
+      results.push({
+        name: 'All rooms',
+        description: allRooms.map(r => r.name).join(', '),
+        id: allIds,
+      });
+    }
 
-    // Add individual rooms
-    for (const r of rooms) {
+    // Add individual rooms with floor label
+    for (const r of allRooms) {
       results.push({
         name: r.name,
-        description: floorLabel ? `${floorLabel} — Room ID: ${r.id}` : `Room ID: ${r.id}`,
+        description: r.floorName ? `${r.floorName} — Room ID: ${r.id}` : `Room ID: ${r.id}`,
         id: String(r.id),
       });
     }
 
-    // Add common combinations (pairs)
-    if (rooms.length > 2 && rooms.length <= 8) {
-      for (let i = 0; i < rooms.length; i++) {
-        for (let j = i + 1; j < rooms.length; j++) {
+    // Add common combinations (pairs) for single-floor only (too many combos with multi-floor)
+    if (!hasMultiFloor && allRooms.length > 2 && allRooms.length <= 8) {
+      for (let i = 0; i < allRooms.length; i++) {
+        for (let j = i + 1; j < allRooms.length; j++) {
           results.push({
-            name: `${rooms[i].name} + ${rooms[j].name}`,
-            description: `Room IDs: ${rooms[i].id}, ${rooms[j].id}`,
-            id: `${rooms[i].id},${rooms[j].id}`,
+            name: `${allRooms[i].name} + ${allRooms[j].name}`,
+            description: `Room IDs: ${allRooms[i].id}, ${allRooms[j].id}`,
+            id: `${allRooms[i].id},${allRooms[j].id}`,
           });
         }
       }
