@@ -82,6 +82,7 @@ const PROP = {
   MAP_EXTEND_DATA: { siid: 6, piid: 3 },
   MAP_LIST: { siid: 6, piid: 8 },
   MULTI_FLOOR_MAP: { siid: 6, piid: 7 },
+  QUICK_COMMAND: { siid: 4, piid: 48 },
 };
 
 // SIID/AIID action constants
@@ -705,6 +706,7 @@ class DreameVacuumDevice extends Homey.Device {
     this._savedMapData = {};  // In-memory only: { [mapId]: base64MapString } for rendering
     this._selectedMapId = this.getStoreValue('selectedMapId') || null;
     this._multiFloorEnabled = this.getStoreValue('multiFloorEnabled') || false;
+    this._shortcuts = this.getStoreValue('shortcuts') || [];
     this._mapListObjectName = null;
 
     // Ensure all capabilities are present (for devices paired before new capabilities were added)
@@ -1596,6 +1598,41 @@ class DreameVacuumDevice extends Homey.Device {
         this._taskType = value;
         break;
 
+      case '4-48': { // SHORTCUTS (Tasshack: DreameVacuumProperty.SHORTCUTS)
+        // Property value is JSON array: [{id, name (base64), state}, ...]
+        if (value && typeof value === 'string' && value !== '') {
+          try {
+            const raw = JSON.parse(value);
+            const list = Array.isArray(raw) ? raw : [];
+            const shortcuts = [];
+            for (let i = 0; i < list.length; i++) {
+              const entry = list[i];
+              if (!entry || !entry.id) continue;
+              // Name is base64-encoded (per Tasshack)
+              let name = `Shortcut ${i + 1}`;
+              if (entry.name) {
+                try {
+                  const decoded = Buffer.from(entry.name, 'base64').toString('utf8');
+                  if (Buffer.from(decoded, 'utf8').toString('base64') === entry.name) {
+                    name = decoded;
+                  } else {
+                    name = entry.name; // plain text fallback
+                  }
+                } catch { name = entry.name; }
+              }
+              const running = entry.state === '0' || entry.state === '1' || entry.state === 0 || entry.state === 1;
+              shortcuts.push({ id: entry.id, name, index: i + 1, running });
+            }
+            this._shortcuts = shortcuts;
+            this.setStoreValue('shortcuts', shortcuts).catch(this.error);
+            this._diag(`[SHORTCUT] Discovered ${shortcuts.length} shortcuts: ${shortcuts.map(s => s.name).join(', ')}`, null, 'info');
+          } catch (e) {
+            this._diag(`[SHORTCUT] Parse error: ${e.message}, raw: ${String(value).slice(0, 200)}`, null, 'warning');
+          }
+        }
+        break;
+      }
+
       case '4-27': // CHILD_LOCK
         await this.setCapabilityValue('dreame_child_lock', !!value).catch(this.error);
         break;
@@ -1871,8 +1908,8 @@ class DreameVacuumDevice extends Homey.Device {
           PROP.LOW_WATER_WARNING,
         );
 
-        // Multi-floor map properties (skip if known unsupported)
-        const floorProps = [PROP.MULTI_FLOOR_MAP, PROP.MAP_LIST];
+        // Multi-floor map + shortcuts (skip if known unsupported)
+        const floorProps = [PROP.MULTI_FLOOR_MAP, PROP.MAP_LIST, PROP.QUICK_COMMAND];
         for (const p of floorProps) {
           const pk = `${p.siid}-${p.piid}`;
           if (!this._unsupportedProps.has(pk)) props.push(p);
@@ -2284,6 +2321,34 @@ class DreameVacuumDevice extends Homey.Device {
     }
     this._diag(`[ZONE] Deleted zone ${zoneId}`, null, 'info');
     await this.setStoreValue('savedMaps', this._savedMaps);
+  }
+
+  /**
+   * Get discovered shortcuts from the Dreame Home app.
+   */
+  getShortcuts() {
+    return this._shortcuts || [];
+  }
+
+  /**
+   * Start a shortcut by ID.
+   * Protocol (Tasshack v2): start_custom(status=25, params=str(shortcut_id))
+   * SHORTCUT status = 25 (DreameVacuumStatus.SHORTCUT)
+   */
+  async startShortcut(shortcutId) {
+    const id = parseInt(shortcutId, 10);
+    if (isNaN(id) || id < 1) throw new Error('Invalid shortcut ID');
+
+    this._lastCommandTime = Date.now();
+    const api = this._getApi();
+
+    // Start shortcut via START_CUSTOM: piid:1=25 (SHORTCUT status), piid:10=shortcutId
+    await api.callAction(this._did, this._bindDomain, ACTION.START_CUSTOM.siid, ACTION.START_CUSTOM.aiid, [
+      { piid: 1, value: 25 },  // 25 = SHORTCUT status (per Tasshack v2)
+      { piid: 10, value: String(id) },
+    ]);
+
+    this._diag(`[SHORTCUT] Started shortcut ${id}`, null, 'info');
   }
 
   /**

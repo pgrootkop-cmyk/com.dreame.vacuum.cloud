@@ -1,4 +1,7 @@
 {
+  "0.0.26": {
+    "en": "Dreame shortcuts support\n- New 'Run a shortcut' Flow card to trigger shortcuts configured in the Dreame Home app\n- Shortcuts auto-discovered from device (property 4-48) with base64 name decoding\n- Autocomplete lists all available shortcuts by name"
+  },
   "0.0.25": {
     "en": "Multi-floor and zone rewrite, map rotation, bug fixes\n\nArchitecture Rewrite:\n- New per-floor data model (savedMaps) replacing scattered state — each floor has independent rooms, zones, and map data\n- Rooms now correctly switch when changing floors (was always showing floor 1)\n- Zones stored per-floor inside savedMaps — persist across restarts\n- Migration from old data format on first load\n\nBug Fixes:\n- Fixed: rooms always showing floor 1 regardless of selected floor\n- Fixed: zones disappearing after app restart\n- Fixed: zone deletion not working (X button)\n- Fixed: zone drawing not releasing on web browsers (mouseup outside canvas)\n- Fixed: map showing wrong floor due to string/number type mismatch\n- Fixed: floor list not refreshing in settings UI\n- Added keyboard support for zone drawing (Enter to save, Escape to cancel)\n\nNew Features:\n- Map rotation setting in widget (0°, 90°, 180°, 270°)\n- Per-floor room list in app settings (rooms update when switching floors)\n- Zones filtered by current floor in settings\n- Diagnostic logging for zone CRUD operations"
   },

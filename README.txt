@@ -30,6 +30,7 @@ We recommend using a separate Dreame Home account for Homey to avoid potential s
 - Room Cleaning: Single room or multi-room with autocomplete or manual room ID, per-room suction/water/repeats, per-room trigger cards
 - Zone Cleaning: Draw custom cleaning zones on the map in App Settings. Use them in Flow cards for precise area cleaning
 - Multi-Floor Support: Automatic detection of multi-floor setups. View different floor maps, switch floors via Flow card, current floor shown as device capability
+- Shortcuts: Trigger shortcuts from the Dreame Home app via a Flow card. Auto-discovered from device
 - Live Tracking: Real-time robot position on map widget and settings page during cleaning (~5s updates)
 - Current Room: Shows which room the robot is in — live during cleaning, dock room when charging
 - Current Floor: Shows which floor the robot is on (multi-floor devices)
@@ -40,7 +41,7 @@ We recommend using a separate Dreame Home account for Homey to avoid potential s
 - Dock Settings: Mop Wash Level, Water Temperature, Auto Empty Frequency, Mop Pressure, Drying Time, Volume
 - Toggles: Child Lock, Resume Cleaning, Tight Mopping, Silent Drying, DND
 - Status: Battery, Cleaned Area, Cleaning Time, Total Cleaned Area, Error, Current Room, Current Floor, Charging, Dock Cleaning, Drying Progress, Drainage, Detergent, Hot Water, Water Tank, Dirty Water Tank, Dust Bag, Dust Collection
-- Flow Cards: 34 actions, 19 conditions, 14 triggers
+- Flow Cards: 35 actions, 19 conditions, 14 triggers
 
 **Setting Up Zones**
 1. Open Dreame app settings in Homey

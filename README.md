@@ -47,6 +47,7 @@ If you signed up using Google, Apple, or another third-party login, you need to 
 | **Room Cleaning** | Room discovery via MQTT + cloud map download. Simple room cleaning (uses current device settings) or advanced with per-room suction/water/repeats. Single/multi-room with autocomplete or manual room ID. Per-room trigger cards (start/finish) |
 | **Zone Cleaning** | Draw custom cleaning zones on the map in App Settings. Name each zone and use them in Flow cards. Zones are stored per floor and support the Dreame zone cleaning protocol |
 | **Multi-Floor** | Automatic detection of multi-floor/multi-map setups. View different floor maps in App Settings and the widget. Switch floors via Flow card for cleaning automations. Current floor shown as device capability |
+| **Shortcuts** | Trigger shortcuts configured in the Dreame Home app via a Flow card. Shortcuts are auto-discovered from the device |
 | **Live Tracking** | Real-time robot position on map widget and settings page during cleaning (~5s updates) |
 | **Current Room** | Shows which room the robot is in — live during cleaning, dock room when charging |
 | **Current Floor** | Shows which floor the robot is currently on (multi-floor devices) |
@@ -59,7 +60,7 @@ If you signed up using Google, Apple, or another third-party login, you need to 
 | **Status** | Charging Status, Dock Cleaning Status, Drying Progress, Drainage Status, Detergent Status, Hot Water Status, Water Tank, Dirty Water Tank, Dust Bag, Dust Collection |
 | **Real-time MQTT** | Persistent connection to Dreame MQTT broker for instant property updates and room discovery. All 35+ properties pushed via MQTT — ~80% fewer API calls |
 | **Adaptive Polling** | Automatic poll interval adjustment: 60s idle / 15s cleaning with MQTT, 5s fallback without. MQTT health monitoring with automatic fast-poll recovery |
-| **Flow Cards** | 34 action cards, 19 condition cards, 14 trigger cards |
+| **Flow Cards** | 35 action cards, 19 condition cards, 14 trigger cards |
 
 ### Flow Tips
 

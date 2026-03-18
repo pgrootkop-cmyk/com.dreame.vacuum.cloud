@@ -313,6 +313,17 @@ class DreameVacuumDriver extends Homey.Driver {
         return args.device.isCleaningRoom(roomId);
       });
 
+    // --- Shortcut card ---
+    const shortcutCard = this.homey.flow.getActionCard('start_shortcut');
+    shortcutCard.registerRunListener(async (args) => {
+      const shortcutData = args.shortcut;
+      if (!shortcutData || !shortcutData.id || shortcutData.id === '_none') throw new Error('No shortcut selected');
+      await args.device.startShortcut(shortcutData.id);
+    });
+    shortcutCard.registerArgumentAutocompleteListener('shortcut', async (query, args) => {
+      return this._getShortcutAutocomplete(query, args);
+    });
+
     // --- Zone cleaning card ---
     const zoneCleanCard = this.homey.flow.getActionCard('start_zone_cleaning');
     zoneCleanCard.registerRunListener(async (args) => {
@@ -522,6 +533,21 @@ class DreameVacuumDriver extends Homey.Driver {
     if (!query) return results;
     const q = query.toLowerCase();
     return results.filter(r => r.name.toLowerCase().includes(q) || r.id === query);
+  }
+
+  _getShortcutAutocomplete(query, args) {
+    const shortcuts = args.device ? args.device.getShortcuts() : [];
+    if (shortcuts.length === 0) {
+      return [{ name: 'No shortcuts configured', description: 'Create shortcuts in the Dreame Home app', id: '_none' }];
+    }
+    const results = shortcuts.map(s => ({
+      name: s.name,
+      description: `Shortcut #${s.index}`,
+      id: String(s.id),
+    }));
+    if (!query) return results;
+    const q = query.toLowerCase();
+    return results.filter(r => r.name.toLowerCase().includes(q));
   }
 
   _getZoneAutocomplete(query, args) {
