@@ -27,6 +27,14 @@ module.exports = {
     return device.getFloors();
   },
 
+  async getRooms({ homey, query }) {
+    const did = query.did;
+    const device = homey.app._findVacuumDevice(did);
+    if (!device) return [];
+    if (query.floorId) return device.getRoomsForFloor(query.floorId);
+    return device.getRooms();
+  },
+
   async selectFloor({ homey, body }) {
     const did = body.did;
     const mapId = parseInt(body.mapId, 10);
@@ -42,6 +50,7 @@ module.exports = {
     const did = query.did;
     const device = homey.app._findVacuumDevice(did);
     if (!device) return [];
+    if (query.floorId) return device.getZonesForFloor(query.floorId);
     return device.getZones();
   },
 
@@ -51,29 +60,38 @@ module.exports = {
     if (!device) throw new Error('Device not found');
     const zone = body.zone;
     if (!zone || !zone.name || !zone.coords) throw new Error('Invalid zone data');
-
-    const zones = device.getZones();
-    if (zone.id) {
-      // Update existing
-      const idx = zones.findIndex(z => z.id === zone.id);
-      if (idx >= 0) zones[idx] = zone;
-      else zones.push(zone);
-    } else {
-      // Create new
-      zone.id = `zone_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
-      zones.push(zone);
+    try {
+      return await device.saveZone(zone);
+    } catch (e) {
+      homey.app.log(`[API] saveZone error: ${e.message}`);
+      throw e;
     }
-    await device.setZones(zones);
-    return zone;
   },
 
-  async deleteZone({ homey, body }) {
-    const did = body.did;
-    const zoneId = body.zoneId;
+  // Zone deletion uses query params (Homey DELETE doesn't reliably send body from settings page)
+  async deleteZone({ homey, query }) {
+    const did = query.did;
+    const zoneId = query.zoneId;
     const device = homey.app._findVacuumDevice(did);
     if (!device) throw new Error('Device not found');
-    const zones = device.getZones().filter(z => z.id !== zoneId);
-    await device.setZones(zones);
+    if (!zoneId) throw new Error('Missing zoneId');
+    await device.deleteZone(zoneId);
     return { ok: true };
+  },
+
+  // GET fallback for zone deletion (settings page can't send DELETE body reliably)
+  async deleteZoneGet({ homey, query }) {
+    const did = query.did;
+    const zoneId = query.zoneId;
+    const device = homey.app._findVacuumDevice(did);
+    if (!device) throw new Error('Device not found');
+    if (!zoneId) throw new Error('Missing zoneId');
+    try {
+      await device.deleteZone(zoneId);
+      return { ok: true };
+    } catch (e) {
+      homey.app.log(`[API] deleteZone error: ${e.message}`);
+      throw e;
+    }
   },
 };

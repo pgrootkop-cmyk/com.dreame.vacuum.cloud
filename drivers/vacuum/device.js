@@ -701,12 +701,11 @@ class DreameVacuumDevice extends Homey.Device {
     this._robotCurrentRoomId = null;  // segment ID the robot is currently in
     this._hasDocWaterTank = this.getStoreValue('hasDocWaterTank') || false;
     this._rismCache = null;           // cached decoded rism buffer for fast room lookups
+    this._savedMaps = this.getStoreValue('savedMaps') || {};  // { [mapId]: { id, name, index, rooms, zones, rotation } }
+    this._savedMapData = {};  // In-memory only: { [mapId]: base64MapString } for rendering
+    this._selectedMapId = this.getStoreValue('selectedMapId') || null;
     this._multiFloorEnabled = this.getStoreValue('multiFloorEnabled') || false;
-    this._floors = this.getStoreValue('floors') || [];
-    this._floorMaps = {};             // per-floor saved map data (base64), keyed by map_id
-    this._floorRooms = this.getStoreValue('floorRooms') || {}; // per-floor rooms cache
-    this._mapListObjectName = null;   // cloud object name for map list file
-    this._selectedFloorId = this.getStoreValue('selectedFloorId') || null;
+    this._mapListObjectName = null;
 
     // Ensure all capabilities are present (for devices paired before new capabilities were added)
     const requiredCapabilities = [
@@ -750,14 +749,14 @@ class DreameVacuumDevice extends Homey.Device {
     // Probe-once: detect which advanced properties the device supports
     // Re-probe when new probeable props are added (version bump resets probe)
     const probeVersion = this.getStoreValue('probeVersion') || 0;
-    if (probeVersion < 7) {
+    if (probeVersion < 8) {
       this._unsupportedProps = new Set();
       this._probeComplete = false;
-      this._floors = [];
-      await this.setStoreValue('probeVersion', 7);
+      await this.setStoreValue('probeVersion', 8);
       await this.setStoreValue('probeComplete', false);
       await this.setStoreValue('unsupportedProps', []);
-      await this.setStoreValue('floors', []);
+      // Migrate old floor/zone data to savedMaps
+      await this._migrateToSavedMaps();
     } else {
       this._unsupportedProps = new Set(this.getStoreValue('unsupportedProps') || []);
       this._probeComplete = this.getStoreValue('probeComplete') || false;
@@ -825,15 +824,15 @@ class DreameVacuumDevice extends Homey.Device {
     }
 
     // Set initial floor capability from cached data
-    if (this._floors.length > 0 && this._selectedFloorId) {
+    if (Object.keys(this._savedMaps).length > 0 && this._selectedMapId) {
       this._updateCurrentFloorCapability();
     }
 
     this._diag('[INIT] Device ready', {
       platform: this.homey.platform,
       bindDomain: !!this._bindDomain,
-      cachedRooms: this._rooms.length,
-      cachedFloors: this._floors.length,
+      cachedRooms: this.getRooms().length,
+      cachedFloors: Object.keys(this._savedMaps).length,
       multiFloor: this._multiFloorEnabled,
       probeComplete: this._probeComplete,
     }, 'info');
@@ -1947,7 +1946,7 @@ class DreameVacuumDevice extends Homey.Device {
           unsupported: [...this._unsupportedProps],
           capabilities: this.getCapabilities().length,
           multiFloor: this._multiFloorEnabled,
-          floors: this._floors.length,
+          floors: Object.keys(this._savedMaps).length,
         }, 'info');
       }
 
@@ -2207,22 +2206,29 @@ class DreameVacuumDevice extends Homey.Device {
   }
 
   getRooms() {
+    if (this._selectedMapId && this._savedMaps[this._selectedMapId]) {
+      return this._savedMaps[this._selectedMapId].rooms || [];
+    }
     return this._rooms || [];
   }
 
   getFloors() {
-    return this._floors || [];
+    return Object.values(this._savedMaps)
+      .filter(m => m.id != null)
+      .sort((a, b) => a.id - b.id)
+      .map((m, i) => ({ id: m.id, name: m.name || `Floor ${i + 1}`, index: i + 1 }));
   }
 
   _updateCurrentFloorCapability() {
-    if (!this._floors.length) return;
-    const floor = this._floors.find(f => f.id === this._selectedFloorId);
+    const floors = this.getFloors();
+    if (!floors.length) return;
+    const floor = floors.find(f => String(f.id) === String(this._selectedMapId));
     const name = floor ? floor.name : '-';
     this.setCapabilityValue('dreame_current_floor', name).catch(this.error);
   }
 
   isMultiFloor() {
-    return this._floors.length > 1 || this._multiFloorEnabled;
+    return Object.keys(this._savedMaps).length > 1 || this._multiFloorEnabled;
   }
 
   /**
@@ -2230,29 +2236,112 @@ class DreameVacuumDevice extends Homey.Device {
    * Returns the base64 saved map string or null.
    */
   getFloorMapData(floorId) {
-    if (!this._floorMaps) return null;
-    return this._floorMaps[floorId] || null;
+    return this._savedMapData[String(floorId)] || null;
+  }
+
+  getRoomsForFloor(mapId) {
+    const map = this._savedMaps[String(mapId)];
+    return map ? (map.rooms || []) : [];
+  }
+
+  getZones() {
+    const zones = [];
+    for (const [mapId, map] of Object.entries(this._savedMaps)) {
+      for (const z of (map.zones || [])) {
+        zones.push({ ...z, floorId: map.id });
+      }
+    }
+    return zones;
+  }
+
+  getZonesForFloor(mapId) {
+    const map = this._savedMaps[String(mapId)];
+    return map ? (map.zones || []) : [];
+  }
+
+  async saveZone(zone) {
+    const key = String(zone.floorId || this._selectedMapId || 'default');
+    if (!this._savedMaps[key]) {
+      this._savedMaps[key] = { id: parseInt(key, 10) || null, name: 'Floor', rooms: [], zones: [] };
+    }
+    if (!this._savedMaps[key].zones) this._savedMaps[key].zones = [];
+    if (zone.id) {
+      const idx = this._savedMaps[key].zones.findIndex(z => z.id === zone.id);
+      if (idx >= 0) this._savedMaps[key].zones[idx] = zone;
+      else this._savedMaps[key].zones.push(zone);
+    } else {
+      zone.id = `zone_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+      this._savedMaps[key].zones.push(zone);
+    }
+    await this.setStoreValue('savedMaps', this._savedMaps);
+    this._diag(`[ZONE] Saved zone "${zone.name}" (${zone.id}) on floor ${key}`, null, 'info');
+    return zone;
+  }
+
+  async deleteZone(zoneId) {
+    for (const map of Object.values(this._savedMaps)) {
+      if (map.zones) map.zones = map.zones.filter(z => z.id !== zoneId);
+    }
+    this._diag(`[ZONE] Deleted zone ${zoneId}`, null, 'info');
+    await this.setStoreValue('savedMaps', this._savedMaps);
   }
 
   /**
    * Get rooms for all floors (for trigger/condition cards that need cross-floor rooms).
-   * Uses cached per-floor rooms from _floorRooms (populated by _fetchMapList).
    * Returns [{ id, name, floorId, floorName }] or falls back to current rooms.
    */
   getAllFloorRooms() {
-    if (!this._floors.length || this._floors.length <= 1 || !Object.keys(this._floorRooms).length) {
-      return this._rooms.map(r => ({ ...r, floorId: null, floorName: null }));
+    const floors = this.getFloors();
+    if (floors.length <= 1) {
+      return this.getRooms().map(r => ({ ...r, floorId: null, floorName: null }));
     }
-
-    const allRooms = [];
-    for (const floor of this._floors) {
-      const rooms = this._floorRooms[floor.id] || [];
+    const all = [];
+    for (const f of floors) {
+      const rooms = this.getRoomsForFloor(f.id);
       for (const r of rooms) {
-        allRooms.push({ ...r, floorId: floor.id, floorName: floor.name });
+        all.push({ ...r, floorId: f.id, floorName: f.name });
       }
     }
+    return all.length > 0 ? all : this.getRooms().map(r => ({ ...r, floorId: null, floorName: null }));
+  }
 
-    return allRooms.length > 0 ? allRooms : this._rooms.map(r => ({ ...r, floorId: null, floorName: null }));
+  /**
+   * Migrate old floor/zone data to the new savedMaps structure.
+   * Called once during the probeVersion 8 upgrade.
+   */
+  async _migrateToSavedMaps() {
+    const oldFloors = this.getStoreValue('floors') || [];
+    const oldFloorRooms = this.getStoreValue('floorRooms') || {};
+    const oldZones = this.getStoreValue('zones') || [];
+    const oldSelectedFloorId = this.getStoreValue('selectedFloorId');
+
+    if (oldFloors.length > 0 || oldZones.length > 0) {
+      const savedMaps = {};
+      for (const f of oldFloors) {
+        const key = String(f.id);
+        savedMaps[key] = {
+          id: f.id,
+          name: f.name || `Floor ${f.index || 1}`,
+          index: f.index || 1,
+          rooms: oldFloorRooms[f.id] || oldFloorRooms[String(f.id)] || [],
+          zones: oldZones.filter(z => z.floorId != null && String(z.floorId) === key),
+          rotation: 0,
+        };
+      }
+      // Zones without floorId go to the selected floor or first floor
+      const defaultKey = oldSelectedFloorId ? String(oldSelectedFloorId) : (oldFloors[0] ? String(oldFloors[0].id) : 'default');
+      const orphanZones = oldZones.filter(z => z.floorId == null);
+      if (orphanZones.length > 0 && savedMaps[defaultKey]) {
+        savedMaps[defaultKey].zones = [...(savedMaps[defaultKey].zones || []), ...orphanZones];
+      }
+      this._savedMaps = savedMaps;
+      await this.setStoreValue('savedMaps', savedMaps);
+      if (oldSelectedFloorId) {
+        this._selectedMapId = String(oldSelectedFloorId);
+        await this.setStoreValue('selectedMapId', this._selectedMapId);
+      }
+      this._diag(`[MIGRATE] Migrated ${oldFloors.length} floors, ${oldZones.length} zones to savedMaps`, null, 'info');
+    }
   }
 
   /**
@@ -2262,7 +2351,6 @@ class DreameVacuumDevice extends Homey.Device {
    */
   async _fetchMapList() {
     if (!this._mapListObjectName) return;
-
     try {
       const api = this._getApi();
       const model = this.getStoreValue('model') || '';
@@ -2275,71 +2363,85 @@ class DreameVacuumDevice extends Homey.Device {
         return;
       }
 
-      const floors = [];
+      const modelIv = getMapIvForModel(model);
+      const lang = this._getLanguage();
+      const entries = [];
+
       for (const entry of mapstr) {
         if (!entry.map) continue;
         const mapId = this._extractMapIdFromSavedMap(entry.map, model);
         if (mapId == null) continue;
 
-        // Parse custom name (plain text or base64 depending on firmware)
+        // Parse floor name (plain text or base64)
         let customName = null;
         if (entry.name) {
           try {
             const decoded = Buffer.from(entry.name, 'base64').toString('utf8');
             customName = (Buffer.from(decoded, 'utf8').toString('base64') === entry.name)
               ? decoded : entry.name;
-          } catch {
-            customName = entry.name;
-          }
+          } catch { customName = entry.name; }
         }
-        floors.push({ id: mapId, customName, mapData: entry.map });
+
+        // Parse rooms from this floor's saved map
+        let rooms = [];
+        try {
+          rooms = parseMapRooms(entry.map, () => {}, null, modelIv, lang);
+        } catch { /* skip */ }
+
+        entries.push({ mapId, customName, rooms, mapData: entry.map, rotation: entry.angle || 0 });
       }
 
-      if (floors.length > 0) {
-        // Sort by map_id (ascending) to match Dreame app floor order
-        floors.sort((a, b) => a.id - b.id);
-        // Store per-floor map data in memory (not device store — too large)
-        this._floorMaps = {};
-        // Assign index and default name AFTER sorting
-        floors.forEach((f, i) => {
-          f.index = i + 1;
-          f.name = f.customName || `Floor ${f.index}`;
-          if (f.mapData) {
-            this._floorMaps[f.id] = f.mapData;
-          }
-          delete f.customName;
-          delete f.mapData;
-        });
-        // Extract and cache rooms per floor for cross-floor autocomplete
-        const modelIv = getMapIvForModel(model);
-        const lang = this._getLanguage();
-        this._floorRooms = {};
-        for (const f of floors) {
-          const mapData = this._floorMaps[f.id];
-          if (mapData) {
-            try {
-              this._floorRooms[f.id] = parseMapRooms(mapData, () => {}, null, modelIv, lang);
-            } catch { this._floorRooms[f.id] = []; }
-          }
-          const roomCount = (this._floorRooms[f.id] || []).length;
-          this._diag(`[MAP] Floor ${f.index}: id=${f.id}, name=${f.name}, rooms=${roomCount}`, null, 'info');
-        }
-        this.setStoreValue('floorRooms', this._floorRooms).catch(this.error);
+      if (entries.length === 0) return;
 
-        this._floors = floors;
-        this.setStoreValue('floors', floors).catch(this.error);
+      // Sort by map_id ascending (matches Dreame app order)
+      entries.sort((a, b) => a.mapId - b.mapId);
 
-        // Track selected floor from map list's curr_id
-        const currId = mapInfo.curr_id;
-        if (currId != null && floors.some(f => f.id === currId)) {
-          this._selectedFloorId = currId;
-          this.setStoreValue('selectedFloorId', currId).catch(this.error);
-        } else if (!this._selectedFloorId) {
-          this._selectedFloorId = floors[0].id;
-          this.setStoreValue('selectedFloorId', this._selectedFloorId).catch(this.error);
+      // Build savedMaps, preserving existing zones
+      for (let i = 0; i < entries.length; i++) {
+        const e = entries[i];
+        const key = String(e.mapId);
+        const existing = this._savedMaps[key] || {};
+        this._savedMaps[key] = {
+          id: e.mapId,
+          name: e.customName || `Floor ${i + 1}`,
+          index: i + 1,
+          rooms: e.rooms.length > 0 ? e.rooms : (existing.rooms || []),
+          zones: existing.zones || [],  // Preserve user's zones!
+          rotation: e.rotation,
+        };
+        this._savedMapData[key] = e.mapData;  // In-memory only
+      }
+
+      // Remove floors that no longer exist on the device
+      for (const key of Object.keys(this._savedMaps)) {
+        if (!entries.find(e => String(e.mapId) === key)) {
+          delete this._savedMaps[key];
+          delete this._savedMapData[key];
         }
-        this._diag(`[MAP] Discovered ${floors.length} floors: ${floors.map(f => f.name).join(', ')} (selected: ${this._selectedFloorId})`, null, 'debug');
-        this._updateCurrentFloorCapability();
+      }
+
+      // Track selected floor from curr_id
+      const currId = mapInfo.curr_id;
+      if (currId != null) {
+        this._selectedMapId = String(currId);
+        this.setStoreValue('selectedMapId', this._selectedMapId).catch(this.error);
+      }
+
+      // Persist savedMaps (without raw pixel data)
+      await this.setStoreValue('savedMaps', this._savedMaps);
+
+      // Update _rooms for backward compat (current floor's rooms)
+      if (this._selectedMapId && this._savedMaps[this._selectedMapId]) {
+        this._rooms = this._savedMaps[this._selectedMapId].rooms || [];
+        this.setStoreValue('rooms', this._rooms).catch(this.error);
+      }
+
+      this._updateCurrentFloorCapability();
+
+      const floors = this.getFloors();
+      for (const f of floors) {
+        const roomCount = (this._savedMaps[String(f.id)] || {}).rooms?.length || 0;
+        this._diag(`[MAP] Floor ${f.index}: id=${f.id}, name=${f.name}, rooms=${roomCount}`, null, 'info');
       }
     } catch (e) {
       this._diag(`[MAP] Fetch map list failed: ${e.message}`, null, 'error');
@@ -2379,7 +2481,7 @@ class DreameVacuumDevice extends Homey.Device {
    * Sends UPDATE_MAP_DATA action with {"sm":{},"mapid":<mapId>}.
    */
   async selectFloor(mapId) {
-    if (!this._multiFloorEnabled && this._floors.length <= 1) {
+    if (!this._multiFloorEnabled && Object.keys(this._savedMaps).length <= 1) {
       throw new Error('Multi-floor map is not enabled on this device');
     }
 
@@ -2392,16 +2494,18 @@ class DreameVacuumDevice extends Homey.Device {
       [{ piid: PROP.MAP_EXTEND_DATA.piid, value: payload }],
     );
 
-    this._selectedFloorId = mapId;
-    this.setStoreValue('selectedFloorId', mapId).catch(this.error);
+    this._selectedMapId = String(mapId);
+    this.setStoreValue('selectedMapId', this._selectedMapId).catch(this.error);
+    // Update _rooms for backward compat
+    if (this._savedMaps[this._selectedMapId]) {
+      this._rooms = this._savedMaps[this._selectedMapId].rooms || [];
+      this.setStoreValue('rooms', this._rooms).catch(this.error);
+    }
     this._updateCurrentFloorCapability();
     this._diag(`[MAP] Floor selected: mapId=${mapId}`, null, 'debug');
 
-    // Re-request map to get the new floor's data
     this.homey.setTimeout(async () => {
-      try {
-        await this._requestMapViaMqtt();
-      } catch (e) {
+      try { await this._requestMapViaMqtt(); } catch (e) {
         this._diag(`[MAP] Map re-request after floor switch failed: ${e.message}`, null, 'warning');
       }
     }, 2000);
@@ -2438,15 +2542,11 @@ class DreameVacuumDevice extends Homey.Device {
 
       const json = JSON.parse(buf.slice(imageSize).toString('utf8'));
       const curid = json.curid;
-      const mapId = buf.readInt16LE(0); // map_id from header
 
       if (curid != null) {
-        this._selectedFloorId = curid;
-        this.setStoreValue('selectedFloorId', curid).catch(this.error);
+        this._selectedMapId = String(curid);
+        this.setStoreValue('selectedMapId', this._selectedMapId).catch(this.error);
       }
-
-      // Track curid for selected floor — don't create floor entries here,
-      // the authoritative floor list comes from _fetchMapList via MQTT 6-8
     } catch { /* ignore parse errors */ }
   }
 
@@ -2774,20 +2874,6 @@ class DreameVacuumDevice extends Homey.Device {
     ]);
 
     this._diag(`[ZONE] Zone cleaning started: ${zones.length} zones`, null, 'info');
-  }
-
-  /**
-   * Get saved zones for this device.
-   */
-  getZones() {
-    return this.getStoreValue('zones') || [];
-  }
-
-  /**
-   * Save zones for this device.
-   */
-  async setZones(zones) {
-    await this.setStoreValue('zones', zones);
   }
 
   async startRoomCleaning(roomId, repeats, suction, water) {

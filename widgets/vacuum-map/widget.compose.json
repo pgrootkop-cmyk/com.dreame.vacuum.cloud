@@ -41,6 +41,18 @@
       "value": true
     },
     {
+      "id": "rotation",
+      "type": "dropdown",
+      "title": { "en": "Map rotation" },
+      "value": "0",
+      "values": [
+        { "id": "0", "title": { "en": "0°" } },
+        { "id": "90", "title": { "en": "90°" } },
+        { "id": "180", "title": { "en": "180°" } },
+        { "id": "270", "title": { "en": "270°" } }
+      ]
+    },
+    {
       "id": "floor",
       "type": "autocomplete",
       "title": { "en": "Floor" },

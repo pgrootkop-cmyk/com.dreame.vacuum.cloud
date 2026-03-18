@@ -159,10 +159,17 @@ function onHomeyReady(Homey) {
   var labelSize = settings.labelSize || 'medium';
   var floorSetting = settings.floor;
   var floorId = floorSetting ? floorSetting.id : null;
+  var rotation = parseInt(settings.rotation || '0', 10);
   var currentState = 'unknown';
 
   if (showStatus) {
     document.getElementById('statusBar').style.display = 'flex';
+  }
+
+  // Apply map rotation
+  if (rotation) {
+    var canvas = document.getElementById('canvas');
+    canvas.style.transform = 'rotate(' + rotation + 'deg)';
   }
 
   Homey.api('GET', '/data').then(function(dev) {

@@ -1,7 +1,7 @@
 {
   "_comment": "This file is generated. Please edit .homeycompose/app.json instead.",
   "id": "com.dreame.vacuum.cloud",
-  "version": "0.0.24",
+  "version": "0.0.25",
   "compatibility": ">=12.3.0",
   "sdk": 3,
   "platforms": [
@@ -35,6 +35,10 @@
       "method": "GET",
       "path": "/floors"
     },
+    "getRooms": {
+      "method": "GET",
+      "path": "/rooms"
+    },
     "selectFloor": {
       "method": "PUT",
       "path": "/selectFloor"
@@ -50,6 +54,10 @@
     "deleteZone": {
       "method": "DELETE",
       "path": "/zones"
+    },
+    "deleteZoneGet": {
+      "method": "GET",
+      "path": "/deleteZone"
     }
   },
   "tags": {
@@ -3138,6 +3146,40 @@
             "en": "Show status bar"
           },
           "value": true
+        },
+        {
+          "id": "rotation",
+          "type": "dropdown",
+          "title": {
+            "en": "Map rotation"
+          },
+          "value": "0",
+          "values": [
+            {
+              "id": "0",
+              "title": {
+                "en": "0°"
+              }
+            },
+            {
+              "id": "90",
+              "title": {
+                "en": "90°"
+              }
+            },
+            {
+              "id": "180",
+              "title": {
+                "en": "180°"
+              }
+            },
+            {
+              "id": "270",
+              "title": {
+                "en": "270°"
+              }
+            }
+          ]
         },
         {
           "id": "floor",

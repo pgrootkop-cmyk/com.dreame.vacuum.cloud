@@ -307,7 +307,7 @@ class DreameApp extends Homey.App {
         rooms: d.getRooms(),
         floors: d.getFloors(),
         multiFloor: d.isMultiFloor(),
-        selectedFloorId: d._selectedFloorId || null,
+        selectedFloorId: d._selectedMapId || null,
         capabilities: caps,
         store: {
           model: d.getStoreValue('model'),
@@ -343,13 +343,13 @@ class DreameApp extends Homey.App {
 
     // If a non-active floor is requested and we have its saved map data, render that
     if (floorId != null) {
-      const requestedFloor = parseInt(floorId, 10);
-      const activeFloor = device._selectedFloorId;
+      const requestedFloor = String(floorId);
+      const activeFloor = String(device._selectedMapId || '');
       // Only use saved map snapshot for floors that are NOT the currently active floor
       if (requestedFloor !== activeFloor) {
         const floorMapData = device.getFloorMapData(requestedFloor);
         if (floorMapData) {
-          const rooms = this._extractRoomsFromSavedMap(floorMapData, model);
+          const rooms = device.getRoomsForFloor(requestedFloor);
           return this._renderMapPixels(floorMapData, rooms, model, colorScheme);
         }
       }

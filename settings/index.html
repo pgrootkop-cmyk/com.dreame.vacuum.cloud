@@ -152,13 +152,21 @@ function selectDevice() {
 }
 
 function show(d) {
-  status(d); rooms(d); consumables(d); floors(d); loadZones();
   _currentFloorId = d.selectedFloorId || null;
-  // Always render the live map for the active floor (has correct coords + robot position)
+  status(d); consumables(d); floors(d); loadZones();
+  // Fetch rooms for the active floor specifically
+  if (_currentFloorId) {
+    _homey.api('GET', '/rooms?did=' + encodeURIComponent(d.id) + '&floorId=' + encodeURIComponent(_currentFloorId), null, function(err, data) {
+      renderRoomList(!err && data ? data : d.rooms);
+    });
+  } else {
+    renderRoomList(d.rooms);
+  }
   map(d);
+  // Refresh floor list
   if (d.multiFloor || (d.floors && d.floors.length > 0)) {
     _homey.api('GET', '/floors?did=' + encodeURIComponent(d.id), null, function(err, freshFloors) {
-      if (!err && freshFloors && freshFloors.length > 0 && freshFloors.length !== (d.floors || []).length) {
+      if (!err && freshFloors && freshFloors.length > 0) {
         d.floors = freshFloors;
         d.multiFloor = freshFloors.length > 1;
         floors(d);
@@ -184,13 +192,17 @@ function selectFloor() {
   _currentFloorId = floorId;
   var d = _devices.find(function(x) { return x.id === _did; });
   if (!d) return;
-  // Active floor: render live map (correct coords + robot). Other floor: saved map snapshot.
+  // Fetch rooms for selected floor
+  _homey.api('GET', '/rooms?did=' + encodeURIComponent(_did) + '&floorId=' + encodeURIComponent(floorId), null, function(err, data) {
+    if (!err && data) renderRoomList(data);
+  });
+  // Active floor: live map. Other floor: saved snapshot.
   if (String(floorId) === String(d.selectedFloorId)) {
     map(d);
   } else {
     mapForFloor(d, floorId);
   }
-  renderZoneList();
+  loadZones(); // Reload zones filtered by floor
 }
 
 function mapForFloor(d, floorId) {
@@ -289,13 +301,15 @@ function saveDrawnZone() {
 }
 
 function deleteZone(zoneId) {
-  _homey.confirm('Delete this zone?', function(err, ok) {
-    if (ok) {
-      _homey.api('DELETE', '/zones', { did: _did, zoneId: zoneId }, function(err2) {
-        if (err2) { _homey.alert('Failed to delete: ' + (err2.message || err2)); return; }
-        loadZones();
-      });
+  // Delete immediately (skip confirm — it was causing callback issues on some Homey versions)
+  _homey.api('GET', '/deleteZone?did=' + encodeURIComponent(_did) + '&zoneId=' + encodeURIComponent(zoneId), null, function(err2, result) {
+    if (err2) {
+      _homey.alert('Failed to delete zone: ' + (err2.message || JSON.stringify(err2)));
+      return;
     }
+    _zones = _zones.filter(function(z) { return z.id !== zoneId; });
+    renderZoneList();
+    drawZonesOverlay();
   });
 }
 
@@ -369,10 +383,18 @@ function redrawMap() {
   }
   canvas.addEventListener('mousedown', onStart);
   canvas.addEventListener('mousemove', onMove);
-  canvas.addEventListener('mouseup', onEnd);
+  // Listen on document for mouseup (catches release outside canvas — fixes web browser issue)
+  document.addEventListener('mouseup', onEnd);
   canvas.addEventListener('touchstart', onStart, { passive: false });
   canvas.addEventListener('touchmove', onMove, { passive: false });
-  canvas.addEventListener('touchend', onEnd);
+  document.addEventListener('touchend', onEnd);
+
+  // Keyboard support: Enter to save, Escape to cancel
+  document.addEventListener('keydown', function(e) {
+    if (!_drawState.active) return;
+    if (e.key === 'Enter') { e.preventDefault(); saveDrawnZone(); }
+    if (e.key === 'Escape') { e.preventDefault(); cancelDrawZone(); }
+  });
 })();
 
 // ---- Standard rendering ----
@@ -526,10 +548,10 @@ function status(d) {
   }).join('');
 }
 
-function rooms(d) {
+function renderRoomList(roomData) {
   var el = document.getElementById('roomList');
-  if (!d.rooms || !d.rooms.length) { el.innerHTML = '<li>No rooms discovered</li>'; return; }
-  el.innerHTML = d.rooms.map(function(r) {
+  if (!roomData || !roomData.length) { el.innerHTML = '<li>No rooms discovered</li>'; return; }
+  el.innerHTML = roomData.map(function(r) {
     return '<li><span>' + r.name + '</span><span class="room-id">ID ' + r.id + '</span></li>';
   }).join('');
 }
