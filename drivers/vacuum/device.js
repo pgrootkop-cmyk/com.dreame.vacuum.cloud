@@ -683,7 +683,7 @@ class DreameVacuumDevice extends Homey.Device {
     this._forceNextPoll = false;
     this._lastTriggeredError = null;
     this._consumableLowNotified = {};
-    this._rooms = this.getStoreValue('rooms') || [];
+    this._roomsFallback = this.getStoreValue('rooms') || [];
     this._cleaningRoomIds = [];
     this._mqttConnected = false;
     this._lastMqttMessage = 0;
@@ -698,6 +698,7 @@ class DreameVacuumDevice extends Homey.Device {
     this._isStuck = false;           // track stuck status for triggers
     this._lastDreameState = 0;       // track raw Dreame state for zone/segment detection
     this._wasZoneCleaning = false;   // track zone cleaning across state transitions (34→5→6)
+    this._wasCleaningSession = false; // track that a cleaning session was active (for deferred finished triggers)
     this._lastWaterTankInstalled = null; // track water tank for change triggers
     this._robotPositionRaw = null;    // live robot position (raw Dreame coords) from P-frames
     this._robotCurrentRoomId = null;  // segment ID the robot is currently in
@@ -935,7 +936,7 @@ class DreameVacuumDevice extends Homey.Device {
         connected: () => {
           this._mqttConnected = true;
           this._lastMqttMessage = Date.now();
-          const cachedRooms = this._rooms ? this._rooms.length : 0;
+          const cachedRooms = this.getRooms().length;
           this._diag(`[MQTT] Connected, ${cachedRooms} cached rooms`, null, 'info');
           this._adjustPolling();
           this._stopMapRefreshTimer();
@@ -948,7 +949,7 @@ class DreameVacuumDevice extends Homey.Device {
           }
 
           this._mapResponseTimeout = this.homey.setTimeout(() => {
-            if (!this._rooms || this._rooms.length === 0) {
+            if (this.getRooms().length === 0) {
               this._diag('[MAP] No 6-3 received after 60s, trying HTTP fallback', null, 'warning');
               this._refreshMapViaHttp().catch(() => {});
             }
@@ -1242,8 +1243,7 @@ class DreameVacuumDevice extends Homey.Device {
     const rooms = parseMapRooms(mapStr, parseLogger, mapKey, modelIv, lang);
     this._diag(`[MAP] Parsed ${rooms.length} rooms from map data`, null, 'debug');
     if (rooms.length > 0) {
-      this._rooms = rooms;
-      this.setStoreValue('rooms', rooms).catch(this.error);
+      this._setCurrentFloorRooms(rooms);
     }
 
     // Cache map data for future widget use (object name + dimensions)
@@ -1275,13 +1275,12 @@ class DreameVacuumDevice extends Homey.Device {
       // Extract robot position from every 6-1 frame for live tracking.
       if (key === '6-1' && value) {
         this._extractRobotPosition(value);
-        if (!this._rooms || this._rooms.length === 0) {
+        if (this.getRooms().length === 0) {
           const lang = this._getLanguage();
           const rooms = parseMapRooms(value, (msg) => { this._diag(msg, null, 'debug'); }, null, null, lang);
           if (rooms.length > 0) {
             this._diag(`[MAP] Bootstrap rooms from 6-1 P-frame: ${rooms.length} segments`, null, 'debug');
-            this._rooms = rooms;
-            this.setStoreValue('rooms', rooms).catch(this.error);
+            this._setCurrentFloorRooms(rooms);
           }
         }
         continue;
@@ -1335,15 +1334,20 @@ class DreameVacuumDevice extends Homey.Device {
             if (this._cleaningRoomIds.length > 0) this._fireRoomFinishedTriggers();
             this._robotCurrentRoomId = null;
             this._robotPositionRaw = null;
-            // Fire cleaning_finished when transitioning from cleaning to docked/charging
-            if (prevState === 'cleaning' && (homeyState === 'docked' || homeyState === 'charging')) {
+            // Track that a cleaning session ended (triggers deferred until robot reaches charging)
+            if (prevState === 'cleaning') {
+              this._wasCleaningSession = true;
+            }
+            // Fire cleaning_finished / zone_cleaning_finished when robot reaches charging
+            // (not at RETURNING/docked, so "Then" actions like Stop actually work)
+            if (homeyState === 'charging' && this._wasCleaningSession) {
+              this._wasCleaningSession = false;
               const area = this.getCapabilityValue('dreame_cleaned_area') || 0;
               const time = this.getCapabilityValue('dreame_cleaning_time') || 0;
               const finishedCard = this.homey.flow.getDeviceTriggerCard('cleaning_finished');
               finishedCard.trigger(this, { cleaned_area: area, cleaning_time: time })
                 .catch(e => this.error('Cleaning finished trigger:', e));
               // Fire zone_cleaning_finished if this session included zone cleaning
-              // (tracks across ZONE_CLEANING(34) → RETURNING(5) → CHARGING(6))
               if (this._wasZoneCleaning) {
                 const zoneName = this._lastZoneName || '';
                 const zoneFinishedCard = this.homey.flow.getDeviceTriggerCard('zone_cleaning_finished');
@@ -1358,6 +1362,8 @@ class DreameVacuumDevice extends Homey.Device {
               this._detectChargerRoom();
             } else {
               this.setCapabilityValue('dreame_current_room', '-').catch(this.error);
+              // Reset cleaning session flag if robot goes to a non-dock state (e.g. stopped/error)
+              this._wasCleaningSession = false;
             }
           }
         }
@@ -2253,7 +2259,16 @@ class DreameVacuumDevice extends Homey.Device {
     if (this._selectedMapId && this._savedMaps[this._selectedMapId]) {
       return this._savedMaps[this._selectedMapId].rooms || [];
     }
-    return this._rooms || [];
+    return this._roomsFallback || [];
+  }
+
+  _setCurrentFloorRooms(rooms) {
+    if (this._selectedMapId && this._savedMaps[this._selectedMapId]) {
+      this._savedMaps[this._selectedMapId].rooms = rooms;
+      this.setStoreValue('savedMaps', this._savedMaps).catch(this.error);
+    }
+    this._roomsFallback = rooms;
+    this.setStoreValue('rooms', rooms).catch(this.error);
   }
 
   getFloors() {
@@ -2320,6 +2335,21 @@ class DreameVacuumDevice extends Homey.Device {
     await this.setStoreValue('savedMaps', this._savedMaps);
     this._diag(`[ZONE] Saved zone "${zone.name}" (${zone.id}) on floor ${key}`, null, 'info');
     return zone;
+  }
+
+  async updateZone(zoneId, changes) {
+    for (const map of Object.values(this._savedMaps)) {
+      if (!map.zones) continue;
+      const zone = map.zones.find(z => z.id === zoneId);
+      if (zone) {
+        if (changes.name != null) zone.name = changes.name;
+        if (changes.coords != null) zone.coords = changes.coords;
+        await this.setStoreValue('savedMaps', this._savedMaps);
+        this._diag(`[ZONE] Updated zone "${zone.name}" (${zoneId})`, null, 'info');
+        return zone;
+      }
+    }
+    throw new Error(`Zone ${zoneId} not found`);
   }
 
   async deleteZone(zoneId) {
@@ -2502,10 +2532,10 @@ class DreameVacuumDevice extends Homey.Device {
       // Persist savedMaps (without raw pixel data)
       await this.setStoreValue('savedMaps', this._savedMaps);
 
-      // Update _rooms for backward compat (current floor's rooms)
+      // Sync fallback rooms from current floor
       if (this._selectedMapId && this._savedMaps[this._selectedMapId]) {
-        this._rooms = this._savedMaps[this._selectedMapId].rooms || [];
-        this.setStoreValue('rooms', this._rooms).catch(this.error);
+        this._roomsFallback = this._savedMaps[this._selectedMapId].rooms || [];
+        this.setStoreValue('rooms', this._roomsFallback).catch(this.error);
       }
 
       this._updateCurrentFloorCapability();
@@ -2568,10 +2598,10 @@ class DreameVacuumDevice extends Homey.Device {
 
     this._selectedMapId = String(mapId);
     this.setStoreValue('selectedMapId', this._selectedMapId).catch(this.error);
-    // Update _rooms for backward compat
+    // Sync fallback rooms from newly selected floor
     if (this._savedMaps[this._selectedMapId]) {
-      this._rooms = this._savedMaps[this._selectedMapId].rooms || [];
-      this.setStoreValue('rooms', this._rooms).catch(this.error);
+      this._roomsFallback = this._savedMaps[this._selectedMapId].rooms || [];
+      this.setStoreValue('rooms', this._roomsFallback).catch(this.error);
     }
     this._updateCurrentFloorCapability();
     this._diag(`[MAP] Floor selected: mapId=${mapId}`, null, 'debug');
@@ -2756,7 +2786,7 @@ class DreameVacuumDevice extends Homey.Device {
       const segId = pixel & 0x3F;
       if (segId > 0 && segId < 61 && segId !== this._robotCurrentRoomId) {
         this._robotCurrentRoomId = segId;
-        const room = (this._rooms || []).find(r => r.id === segId);
+        const room = this.getRooms().find(r => r.id === segId);
         const name = room ? room.name : `Room ${segId}`;
         this.setCapabilityValue('dreame_current_room', name).catch(this.error);
       }
@@ -2785,8 +2815,8 @@ class DreameVacuumDevice extends Homey.Device {
       // Include current room info
       const roomId = this._robotCurrentRoomId;
       let roomName = null;
-      if (roomId && this._rooms) {
-        const room = this._rooms.find(r => r.id === roomId);
+      if (roomId) {
+        const room = this.getRooms().find(r => r.id === roomId);
         if (room) roomName = room.name;
       }
       return { x: px, y: py, roomId, roomName };
@@ -2874,8 +2904,9 @@ class DreameVacuumDevice extends Homey.Device {
   _fireRoomStartedTriggers(roomIds) {
     const triggerCard = this.homey.flow.getDeviceTriggerCard('room_cleaning_started');
     const triggerByIdCard = this.homey.flow.getDeviceTriggerCard('room_cleaning_started_by_id');
+    const rooms = this.getRooms();
     for (const roomId of roomIds) {
-      const room = this._rooms.find(r => r.id === roomId);
+      const room = rooms.find(r => r.id === roomId);
       const roomName = room ? room.name : `Room ${roomId}`;
       const tokens = { room_name: roomName, room_id: String(roomId) };
       const state = { room_id: roomId };
@@ -2889,8 +2920,9 @@ class DreameVacuumDevice extends Homey.Device {
   _fireRoomFinishedTriggers() {
     const triggerCard = this.homey.flow.getDeviceTriggerCard('room_cleaning_finished');
     const triggerByIdCard = this.homey.flow.getDeviceTriggerCard('room_cleaning_finished_by_id');
+    const rooms = this.getRooms();
     for (const roomId of this._cleaningRoomIds) {
-      const room = this._rooms.find(r => r.id === roomId);
+      const room = rooms.find(r => r.id === roomId);
       const roomName = room ? room.name : `Room ${roomId}`;
       const tokens = { room_name: roomName, room_id: String(roomId) };
       const state = { room_id: roomId };

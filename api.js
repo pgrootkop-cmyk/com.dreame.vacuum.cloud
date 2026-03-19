@@ -68,6 +68,19 @@ module.exports = {
     }
   },
 
+  async updateZone({ homey, body }) {
+    const did = body.did;
+    const zoneId = body.zoneId;
+    const device = homey.app._findVacuumDevice(did);
+    if (!device) throw new Error('Device not found');
+    if (!zoneId) throw new Error('Missing zoneId');
+    const changes = {};
+    if (body.name != null) changes.name = body.name;
+    if (body.coords != null) changes.coords = body.coords;
+    if (Object.keys(changes).length === 0) throw new Error('No changes provided');
+    return await device.updateZone(zoneId, changes);
+  },
+
   // Zone deletion uses query params (Homey DELETE doesn't reliably send body from settings page)
   async deleteZone({ homey, query }) {
     const did = query.did;

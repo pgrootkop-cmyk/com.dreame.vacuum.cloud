@@ -117,6 +117,7 @@ var _mapState = { canvas: null, ctx: null, scale: 1, baseImage: null, mapMeta: n
 var _settingsPollTimer = null;
 var _zones = [];
 var _drawState = { active: false, startX: 0, startY: 0, endX: 0, endY: 0 };
+var _redrawZoneId = null;
 var _currentFloorId = null;
 var _rotation = 0;
 
@@ -257,8 +258,11 @@ function renderZoneList() {
   var filtered = _zones.filter(function(z) { return !_currentFloorId || !z.floorId || String(z.floorId) === String(_currentFloorId); });
   if (filtered.length === 0) { el.innerHTML = '<li class="no-data">No zones configured for this floor</li>'; return; }
   el.innerHTML = filtered.map(function(z) {
-    return '<li><span class="zone-name">' + z.name + '</span><span class="zone-actions">'
-      + '<button class="zone-btn delete" onclick="deleteZone(\'' + z.id + '\')" title="Delete">\u2715</button>'
+    var eid = z.id.replace(/'/g, "\\'");
+    return '<li><span class="zone-name" id="zname_' + z.id + '">' + z.name + '</span><span class="zone-actions">'
+      + '<button class="zone-btn rename" onclick="renameZone(\'' + eid + '\')" title="Rename">&#9998;</button>'
+      + '<button class="zone-btn redraw" onclick="redrawZone(\'' + eid + '\')" title="Redraw on map">&#8634;</button>'
+      + '<button class="zone-btn delete" onclick="deleteZone(\'' + eid + '\')" title="Delete">\u2715</button>'
       + '</span></li>';
   }).join('');
   drawZonesOverlay();
@@ -280,6 +284,7 @@ function startDrawZone() {
 
 function cancelDrawZone() {
   _drawState.active = false;
+  _redrawZoneId = null;
   document.getElementById('btnDraw').style.display = 'inline-block';
   document.getElementById('btnSave').style.display = 'none';
   document.getElementById('btnCancel').style.display = 'none';
@@ -310,19 +315,35 @@ function saveDrawnZone() {
   var x1 = Math.round(px1 * meta.gridSize + meta.left);
   var y1 = Math.round((h - 1 - py0) * meta.gridSize + meta.top);
 
-  var zone = {
-    name: name,
-    coords: [Math.min(x0, x1), Math.min(y0, y1), Math.max(x0, x1), Math.max(y0, y1)],
-    pixelCoords: [Math.round(px0), Math.round(py0), Math.round(px1), Math.round(py1)],
-    floorId: _currentFloorId ? parseInt(_currentFloorId, 10) : null,
-  };
+  var newCoords = [Math.min(x0, x1), Math.min(y0, y1), Math.max(x0, x1), Math.max(y0, y1)];
+  var newPixelCoords = [Math.round(px0), Math.round(py0), Math.round(px1), Math.round(py1)];
 
-  _homey.api('PUT', '/zones', { did: _did, zone: zone }, function(err, saved) {
-    if (err) { _homey.alert('Failed to save zone: ' + (err.message || err)); return; }
-    document.getElementById('zoneNameInput').value = '';
-    cancelDrawZone();
-    loadZones();
-  });
+  if (_redrawZoneId) {
+    // Update existing zone's coordinates
+    _homey.api('POST', '/zones/update', { did: _did, zoneId: _redrawZoneId, coords: newCoords }, function(err, result) {
+      if (err) { _homey.alert('Failed to update zone: ' + (err.message || err)); return; }
+      var zone = _zones.find(function(z) { return z.id === _redrawZoneId; });
+      if (zone) { zone.coords = newCoords; zone.pixelCoords = newPixelCoords; }
+      _redrawZoneId = null;
+      document.getElementById('zoneNameInput').value = '';
+      cancelDrawZone();
+      renderZoneList();
+    });
+  } else {
+    var zone = {
+      name: name,
+      coords: newCoords,
+      pixelCoords: newPixelCoords,
+      floorId: _currentFloorId ? parseInt(_currentFloorId, 10) : null,
+    };
+
+    _homey.api('PUT', '/zones', { did: _did, zone: zone }, function(err, saved) {
+      if (err) { _homey.alert('Failed to save zone: ' + (err.message || err)); return; }
+      document.getElementById('zoneNameInput').value = '';
+      cancelDrawZone();
+      loadZones();
+    });
+  }
 }
 
 function deleteZone(zoneId) {
@@ -336,6 +357,33 @@ function deleteZone(zoneId) {
     renderZoneList();
     drawZonesOverlay();
   });
+}
+
+function renameZone(zoneId) {
+  var zone = _zones.find(function(z) { return z.id === zoneId; });
+  if (!zone) return;
+  var newName = prompt('Rename zone:', zone.name);
+  if (!newName || newName.trim() === '' || newName.trim() === zone.name) return;
+  _homey.api('POST', '/zones/update', { did: _did, zoneId: zoneId, name: newName.trim() }, function(err, result) {
+    if (err) { _homey.alert('Failed to rename zone: ' + (err.message || err)); return; }
+    zone.name = newName.trim();
+    renderZoneList();
+  });
+}
+
+function redrawZone(zoneId) {
+  var zone = _zones.find(function(z) { return z.id === zoneId; });
+  if (!zone) return;
+  if (!_mapState.mapMeta) { _homey.alert('Map not loaded yet.'); return; }
+  _redrawZoneId = zoneId;
+  _drawState = { active: true, startX: 0, startY: 0, endX: 0, endY: 0 };
+  document.getElementById('btnDraw').style.display = 'none';
+  document.getElementById('btnSave').style.display = 'inline-block';
+  document.getElementById('btnCancel').style.display = 'inline-block';
+  document.getElementById('zoneHint').textContent = 'Draw the new area for "' + zone.name + '" on the map.';
+  document.getElementById('zoneNameInput').value = zone.name;
+  document.getElementById('mapCanvas').classList.remove('default-cursor');
+  document.getElementById('mapWrap').classList.add('drawing-active');
 }
 
 function drawZonesOverlay() {

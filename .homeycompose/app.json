@@ -1,6 +1,6 @@
 {
   "id": "com.dreame.vacuum.cloud",
-  "version": "0.0.28",
+  "version": "0.0.29",
   "compatibility": ">=12.3.0",
   "sdk": 3,
   "platforms": [
@@ -49,6 +49,10 @@
     "saveZone": {
       "method": "PUT",
       "path": "/zones"
+    },
+    "updateZone": {
+      "method": "POST",
+      "path": "/zones/update"
     },
     "deleteZone": {
       "method": "DELETE",

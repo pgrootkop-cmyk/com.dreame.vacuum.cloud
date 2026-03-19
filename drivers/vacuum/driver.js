@@ -650,8 +650,23 @@ class DreameVacuumDriver extends Homey.Driver {
       });
     }
 
-    // Add common combinations (pairs) for single-floor only (too many combos with multi-floor)
-    if (!hasMultiFloor && allRooms.length > 2 && allRooms.length <= 8) {
+    // Add common combinations (pairs) per floor
+    if (hasMultiFloor) {
+      for (const floor of floors) {
+        const floorRooms = allRooms.filter(r => r.floorId === floor.id);
+        if (floorRooms.length > 2 && floorRooms.length <= 8) {
+          for (let i = 0; i < floorRooms.length; i++) {
+            for (let j = i + 1; j < floorRooms.length; j++) {
+              results.push({
+                name: `${floorRooms[i].name} + ${floorRooms[j].name}`,
+                description: `${floor.name} — Room IDs: ${floorRooms[i].id}, ${floorRooms[j].id}`,
+                id: `${floorRooms[i].id},${floorRooms[j].id}`,
+              });
+            }
+          }
+        }
+      }
+    } else if (allRooms.length > 2 && allRooms.length <= 8) {
       for (let i = 0; i < allRooms.length; i++) {
         for (let j = i + 1; j < allRooms.length; j++) {
           results.push({
