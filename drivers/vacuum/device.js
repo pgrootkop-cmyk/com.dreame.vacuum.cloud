@@ -1757,6 +1757,12 @@ class DreameVacuumDevice extends Homey.Device {
         if (this._lastDreameStatus === 19 && value === 3) {
           this._diag(`[STATUS] Zone cleaning → Returning (firing early triggers)`, null, 'info');
           if (this._wasZoneCleaning) {
+            // Immediately STOP so user's flow actions (pause, etc.) can act before robot docks
+            const api = this._getApi();
+            api.callAction(this._did, this._bindDomain, ACTION.STOP.siid, ACTION.STOP.aiid)
+              .then(() => this._diag('[ZONE] Sent STOP after zone cleaning finished', null, 'info'))
+              .catch(e => this.error('Failed to stop after zone clean:', e));
+
             const area = this.getCapabilityValue('dreame_cleaned_area') || 0;
             const time = this.getCapabilityValue('dreame_cleaning_time') || 0;
             const zoneName = this._lastZoneName || '';
