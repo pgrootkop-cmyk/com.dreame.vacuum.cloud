@@ -720,6 +720,9 @@ class DreameVacuumDevice extends Homey.Device {
     this._mopPadLifting = this.getStoreValue('mopPadLifting') || false; // combo dock: swap cleaning mode 0↔2
     this._shortcuts = this.getStoreValue('shortcuts') || [];
     this._zones = this.getStoreValue('zones') || [];
+    this._savedMaps = this.getStoreValue('savedMaps') || {};
+    this._selectedMapId = this.getStoreValue('selectedMapId') || null;
+    this._multiFloorEnabled = false;
     this._wasCleaningSession = false; // track cleaning→charging for finished trigger
     this._wasZoneCleaning = false;    // track zone cleaning for zone finished trigger
     this._lastZoneName = null;        // zone name for trigger token
@@ -857,7 +860,7 @@ class DreameVacuumDevice extends Homey.Device {
     }
 
     // Set initial floor capability from cached data
-    if (Object.keys(this._savedMaps).length > 0 && this._selectedMapId) {
+    if (Object.keys(this._savedMaps || {}).length > 0 && this._selectedMapId) {
       this._updateCurrentFloorCapability();
     }
 
@@ -865,7 +868,7 @@ class DreameVacuumDevice extends Homey.Device {
       platform: this.homey.platform,
       bindDomain: !!this._bindDomain,
       cachedRooms: this.getRooms().length,
-      cachedFloors: Object.keys(this._savedMaps).length,
+      cachedFloors: Object.keys(this._savedMaps || {}).length,
       multiFloor: this._multiFloorEnabled,
       probeComplete: this._probeComplete,
     }, 'info');
@@ -2080,7 +2083,7 @@ class DreameVacuumDevice extends Homey.Device {
           unsupported: [...this._unsupportedProps],
           capabilities: this.getCapabilities().length,
           multiFloor: this._multiFloorEnabled,
-          floors: Object.keys(this._savedMaps).length,
+          floors: Object.keys(this._savedMaps || {}).length,
         }, 'info');
       }
 
