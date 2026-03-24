@@ -1,4 +1,7 @@
 {
+  "0.0.34": {
+    "en": "Crash fix and duplicate code cleanup\n\n- Fixed: app crashing on startup with 'Identifier has already been declared' (duplicate code blocks from merge)\n- Removed duplicate flow card registrations in driver.js\n- Removed duplicate mapMeta declaration in app.js"
+  },
   "0.0.33": {
     "en": "Fix cleaning mode swap on L20 Ultra and similar combo-dock devices\n\n- Fixed: 'Set cleaning mode to Sweeping & Mopping' was setting the robot to Sweeping, and vice versa\n- Fixed: 'Start cleaning' flow card not applying the correct cleaning mode\n- Root cause: mop pad lifting detection had a chicken-and-egg problem where it never activated if the device was in Sweeping & Mopping or Mopping mode\n- Detection now triggers reliably on first property update from any combo-dock device"
   },
