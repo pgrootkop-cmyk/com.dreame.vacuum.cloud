@@ -651,16 +651,6 @@ class DreameApp extends Homey.App {
         }
       }
 
-      // Map coordinate metadata for pixel↔device conversion (needed for zone drawing)
-      let mapMeta = null;
-      if (headerBuf.length >= MAP_HEADER_SIZE) {
-        mapMeta = {
-          gridSize: headerBuf.readInt16LE(17),
-          left: headerBuf.readInt16LE(23),
-          top: headerBuf.readInt16LE(25),
-        };
-      }
-
       return {
         width, height,
         pixels: rgba.toString('base64'),
