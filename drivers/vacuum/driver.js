@@ -169,6 +169,27 @@ class DreameVacuumDriver extends Homey.Driver {
         await args.device.setMopWashFrequency(args.frequency);
       });
 
+    // Simple room cleaning cards (use current device settings)
+    const simpleRoomCard = this.homey.flow.getActionCard('start_room_cleaning_simple');
+    simpleRoomCard.registerRunListener(async (args) => {
+      const roomId = parseInt(args.room.id, 10);
+      if (isNaN(roomId) || roomId <= 0) throw new Error('Invalid room selected');
+      await args.device.startRoomCleaningSimple(roomId);
+    });
+    simpleRoomCard.registerArgumentAutocompleteListener('room', async (query, args) => {
+      return this._getRoomAutocomplete(query, args);
+    });
+
+    const simpleMultiRoomCard = this.homey.flow.getActionCard('start_multi_room_cleaning_simple');
+    simpleMultiRoomCard.registerRunListener(async (args) => {
+      const roomIds = String(args.rooms.id).split(',').map(id => parseInt(id.trim(), 10)).filter(id => !isNaN(id) && id > 0);
+      if (roomIds.length === 0) throw new Error('No valid rooms selected');
+      await args.device.startMultiRoomCleaningSimple(roomIds);
+    });
+    simpleMultiRoomCard.registerArgumentAutocompleteListener('rooms', async (query, args) => {
+      return this._getMultiRoomAutocomplete(query, args);
+    });
+
     const roomCleaningCard = this.homey.flow.getActionCard('start_room_cleaning');
     roomCleaningCard.registerRunListener(async (args) => {
       const roomId = parseInt(args.room.id, 10);
@@ -246,7 +267,7 @@ class DreameVacuumDriver extends Homey.Driver {
       return args.device.isCleaningRoom(roomId);
     });
     isCleaningRoomCard.registerArgumentAutocompleteListener('room', async (query, args) => {
-      return this._getRoomAutocomplete(query, args);
+      return this._getRoomAutocompleteWithAny(query, args);
     });
 
     // Room trigger cards with autocomplete filtering
@@ -292,6 +313,65 @@ class DreameVacuumDriver extends Homey.Driver {
         return args.device.isCleaningRoom(roomId);
       });
 
+    // --- Shortcut card ---
+    const shortcutCard = this.homey.flow.getActionCard('start_shortcut');
+    shortcutCard.registerRunListener(async (args) => {
+      const shortcutData = args.shortcut;
+      if (!shortcutData || !shortcutData.id || shortcutData.id === '_none') throw new Error('No shortcut selected');
+      await args.device.startShortcut(shortcutData.id);
+    });
+    shortcutCard.registerArgumentAutocompleteListener('shortcut', async (query, args) => {
+      return this._getShortcutAutocomplete(query, args);
+    });
+
+    // --- Zone cleaning card ---
+    const zoneCleanCard = this.homey.flow.getActionCard('start_zone_cleaning');
+    zoneCleanCard.registerRunListener(async (args) => {
+      const zoneData = args.zone;
+      if (!zoneData || !zoneData.id || zoneData.id === '_none') throw new Error('No zone selected');
+      const zones = args.device.getZones();
+      // Support multi-zone: id can be comma-separated zone IDs
+      const zoneIds = String(zoneData.id).split(',');
+      const coords = [];
+      for (const zid of zoneIds) {
+        const zone = zones.find(z => z.id === zid);
+        if (zone && zone.coords) coords.push(zone.coords);
+      }
+      if (coords.length === 0) throw new Error('Zone not found. Reconfigure zones in app settings.');
+      await args.device.startZoneCleaning(coords, args.repeats, null, null, zoneData.name);
+    });
+    zoneCleanCard.registerArgumentAutocompleteListener('zone', async (query, args) => {
+      return this._getZoneAutocomplete(query, args);
+    });
+
+    // --- Zone cleaning finished trigger (with optional zone filter) ---
+    const zoneFinishedCard = this.homey.flow.getDeviceTriggerCard('zone_cleaning_finished');
+    zoneFinishedCard.registerRunListener(async (args, state) => {
+      if (!args.zone || !args.zone.id || args.zone.id === '') return true; // Any zone
+      return state.zone_name === args.zone.name;
+    });
+    zoneFinishedCard.registerArgumentAutocompleteListener('zone', async (query, args) => {
+      const zones = args.device ? args.device.getZones() : [];
+      const results = [
+        { name: 'Any zone', description: 'Triggers for all zones', id: '' },
+        ...zones.map(z => ({ name: z.name, description: '', id: z.id })),
+      ];
+      if (!query) return results;
+      const q = query.toLowerCase();
+      return results.filter(r => r.name.toLowerCase().includes(q));
+    });
+
+    // --- Select floor card ---
+    const selectFloorCard = this.homey.flow.getActionCard('select_floor');
+    selectFloorCard.registerRunListener(async (args) => {
+      const mapId = parseInt(args.floor.id, 10);
+      if (isNaN(mapId)) throw new Error('Invalid floor selected');
+      await args.device.selectFloor(mapId);
+    });
+    selectFloorCard.registerArgumentAutocompleteListener('floor', async (query, args) => {
+      return this._getFloorAutocomplete(query, args);
+    });
+
     // --- Operational state trigger ---
     const stateChangedCard = this.homey.flow.getDeviceTriggerCard('operational_state_changed');
     stateChangedCard.registerRunListener(async (args, state) => {
@@ -302,6 +382,8 @@ class DreameVacuumDriver extends Homey.Driver {
     // --- Stuck triggers (no run listener needed — no args to filter) ---
 
     // --- Dust bin full trigger (no args to filter) ---
+
+    // --- Cleaning finished trigger (no args to filter) ---
 
     // --- Water tank changed trigger ---
     const waterTankChangedCard = this.homey.flow.getDeviceTriggerCard('water_tank_changed');
@@ -464,7 +546,7 @@ class DreameVacuumDriver extends Homey.Driver {
         return true;
       } catch (err) {
         this.error('Login failed:', err.message);
-        this.homey.app.sendDiagnostic('Pairing: login failed', { region: country, error: err.message });
+        this.homey.app.sendDiagnostic('Pairing: login failed', { region: country, error: err.message }, 'warning');
         throw new Error(`Login failed: ${err.message}`);
       }
     });
@@ -510,29 +592,69 @@ class DreameVacuumDriver extends Homey.Driver {
     });
   }
 
+  _getFloorLabel(args) {
+    const floors = args.device ? args.device.getFloors() : [];
+    if (floors.length <= 1) return '';
+    const selectedId = args.device._selectedFloorId;
+    const floor = floors.find(f => f.id === selectedId);
+    return floor ? floor.name : 'Current floor';
+  }
+
   _getRoomAutocompleteWithAny(query, args) {
-    const rooms = args.device ? args.device.getRooms() : [];
+    const floors = args.device ? args.device.getFloors() : [];
+    const hasMultiFloor = floors.length > 1;
+    const allRooms = args.device && hasMultiFloor
+      ? args.device.getAllFloorRooms()
+      : (args.device ? args.device.getRooms() : []).map(r => ({ ...r, floorId: null, floorName: null }));
+
     const results = [
-      { name: 'Any room', description: 'Triggers for all rooms', id: '' },
-      ...rooms.map(r => ({
-        name: r.name,
-        description: `Room ID: ${r.id}`,
-        id: String(r.id),
-      })),
+      { name: 'Any room', description: 'Triggers for all rooms on all floors', id: '' },
     ];
+
+    if (hasMultiFloor) {
+      // Add "All rooms on <floor>" options
+      for (const floor of floors) {
+        const floorRooms = allRooms.filter(r => r.floorId === floor.id);
+        if (floorRooms.length > 0) {
+          const ids = floorRooms.map(r => r.id).join(',');
+          results.push({
+            name: `All rooms on ${floor.name}`,
+            description: floorRooms.map(r => r.name).join(', '),
+            id: ids,
+          });
+        }
+      }
+    }
+
+    // Add individual rooms with floor label
+    for (const r of allRooms) {
+      results.push({
+        name: r.name,
+        description: r.floorName ? `${r.floorName} — Room ID: ${r.id}` : `Room ID: ${r.id}`,
+        id: String(r.id),
+      });
+    }
+
     if (!query) return results;
     const q = query.toLowerCase();
     return results.filter(r => r.name.toLowerCase().includes(q));
   }
 
   _getRoomAutocomplete(query, args) {
-    const rooms = args.device ? args.device.getRooms() : [];
-    if (rooms.length === 0) {
+    const floors = args.device ? args.device.getFloors() : [];
+    const hasMultiFloor = floors.length > 1;
+
+    // For multi-floor devices, show rooms from ALL floors so users don't need to switch floors first
+    const allRooms = args.device && hasMultiFloor
+      ? args.device.getAllFloorRooms()
+      : (args.device ? args.device.getRooms() : []).map(r => ({ ...r, floorId: null, floorName: null }));
+
+    if (allRooms.length === 0) {
       return [{ name: 'No rooms discovered yet', description: 'Rooms appear after the vacuum maps your home', id: '_none' }];
     }
-    const results = rooms.map(r => ({
+    const results = allRooms.map(r => ({
       name: `${r.name} (ID: ${r.id})`,
-      description: r.customName && r.customName !== r.name ? r.customName : '',
+      description: r.floorName || '',
       id: String(r.id),
     }));
     if (!query) return results;
@@ -540,40 +662,123 @@ class DreameVacuumDriver extends Homey.Driver {
     return results.filter(r => r.name.toLowerCase().includes(q) || r.id === query);
   }
 
+  _getShortcutAutocomplete(query, args) {
+    const shortcuts = args.device ? args.device.getShortcuts() : [];
+    if (shortcuts.length === 0) {
+      return [{ name: 'No shortcuts configured', description: 'Create shortcuts in the Dreame Home app', id: '_none' }];
+    }
+    const results = shortcuts.map(s => ({
+      name: s.name,
+      description: `Shortcut #${s.index}`,
+      id: String(s.id),
+    }));
+    if (!query) return results;
+    const q = query.toLowerCase();
+    return results.filter(r => r.name.toLowerCase().includes(q));
+  }
+
+  _getZoneAutocomplete(query, args) {
+    const zones = args.device ? args.device.getZones() : [];
+    if (zones.length === 0) {
+      return [{ name: 'No zones configured', description: 'Draw zones on the map in app settings', id: '_none' }];
+    }
+    const floors = args.device ? args.device.getFloors() : [];
+    const results = zones.map(z => {
+      const floor = floors.find(f => f.id === z.floorId);
+      const floorLabel = floor ? floor.name : '';
+      return {
+        name: z.name,
+        description: floorLabel ? `${floorLabel}` : 'Custom zone',
+        id: z.id,
+      };
+    });
+    if (!query) return results;
+    const q = query.toLowerCase();
+    return results.filter(r => r.name.toLowerCase().includes(q));
+  }
+
+  _getFloorAutocomplete(query, args) {
+    const floors = args.device ? args.device.getFloors() : [];
+    if (floors.length === 0) {
+      return [{ name: 'Floor 1', description: 'Default floor (single-floor device)', id: '0' }];
+    }
+    const results = floors.map(f => ({
+      name: f.name,
+      description: `Floor ${f.index}`,
+      id: String(f.id),
+    }));
+    if (!query) return results;
+    const q = query.toLowerCase();
+    return results.filter(r => r.name.toLowerCase().includes(q));
+  }
+
   _getMultiRoomAutocomplete(query, args) {
-    const rooms = args.device ? args.device.getRooms() : [];
-    if (rooms.length === 0) {
+    const floors = args.device ? args.device.getFloors() : [];
+    const hasMultiFloor = floors.length > 1;
+    const allRooms = args.device && hasMultiFloor
+      ? args.device.getAllFloorRooms()
+      : (args.device ? args.device.getRooms() : []).map(r => ({ ...r, floorId: null, floorName: null }));
+
+    if (allRooms.length === 0) {
       return [{ name: 'No rooms discovered yet', description: 'Rooms appear after the vacuum maps your home', id: '_none' }];
     }
 
     const results = [];
 
-    // Add "All rooms" option
-    const allIds = rooms.map(r => r.id).join(',');
-    const allNames = rooms.map(r => r.name).join(', ');
-    results.push({
-      name: 'All rooms',
-      description: allNames,
-      id: allIds,
-    });
+    if (hasMultiFloor) {
+      // Per-floor "All rooms on <floor>" options
+      for (const floor of floors) {
+        const floorRooms = allRooms.filter(r => r.floorId === floor.id);
+        if (floorRooms.length > 0) {
+          results.push({
+            name: `All rooms on ${floor.name}`,
+            description: floorRooms.map(r => r.name).join(', '),
+            id: floorRooms.map(r => r.id).join(','),
+          });
+        }
+      }
+    } else {
+      // Single floor "All rooms"
+      const allIds = allRooms.map(r => r.id).join(',');
+      results.push({
+        name: 'All rooms',
+        description: allRooms.map(r => r.name).join(', '),
+        id: allIds,
+      });
+    }
 
-    // Add individual rooms
-    for (const r of rooms) {
+    // Add individual rooms with floor label
+    for (const r of allRooms) {
       results.push({
         name: r.name,
-        description: `Room ID: ${r.id}`,
+        description: r.floorName ? `${r.floorName} — Room ID: ${r.id}` : `Room ID: ${r.id}`,
         id: String(r.id),
       });
     }
 
-    // Add common combinations (pairs)
-    if (rooms.length > 2 && rooms.length <= 8) {
-      for (let i = 0; i < rooms.length; i++) {
-        for (let j = i + 1; j < rooms.length; j++) {
+    // Add common combinations (pairs) per floor
+    if (hasMultiFloor) {
+      for (const floor of floors) {
+        const floorRooms = allRooms.filter(r => r.floorId === floor.id);
+        if (floorRooms.length > 2 && floorRooms.length <= 8) {
+          for (let i = 0; i < floorRooms.length; i++) {
+            for (let j = i + 1; j < floorRooms.length; j++) {
+              results.push({
+                name: `${floorRooms[i].name} + ${floorRooms[j].name}`,
+                description: `${floor.name} — Room IDs: ${floorRooms[i].id}, ${floorRooms[j].id}`,
+                id: `${floorRooms[i].id},${floorRooms[j].id}`,
+              });
+            }
+          }
+        }
+      }
+    } else if (allRooms.length > 2 && allRooms.length <= 8) {
+      for (let i = 0; i < allRooms.length; i++) {
+        for (let j = i + 1; j < allRooms.length; j++) {
           results.push({
-            name: `${rooms[i].name} + ${rooms[j].name}`,
-            description: `Room IDs: ${rooms[i].id}, ${rooms[j].id}`,
-            id: `${rooms[i].id},${rooms[j].id}`,
+            name: `${allRooms[i].name} + ${allRooms[j].name}`,
+            description: `Room IDs: ${allRooms[i].id}, ${allRooms[j].id}`,
+            id: `${allRooms[i].id},${allRooms[j].id}`,
           });
         }
       }
@@ -658,7 +863,7 @@ class DreameVacuumDriver extends Homey.Driver {
         return true;
       } catch (err) {
         this.error('Repair login failed:', err.message);
-        this.homey.app.sendDiagnostic('Repair: login failed', { region: country, error: err.message }, 'error');
+        this.homey.app.sendDiagnostic('Repair: login failed', { region: country, error: err.message }, 'warning');
         throw new Error('Login failed. Check your credentials.');
       }
     });

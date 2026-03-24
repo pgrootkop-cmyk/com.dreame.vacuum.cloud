@@ -163,6 +163,12 @@ function onHomeyReady(Homey) {
     document.getElementById('statusBar').style.display = 'flex';
   }
 
+  // Apply map rotation
+  if (rotation) {
+    var canvas = document.getElementById('canvas');
+    canvas.style.transform = 'rotate(' + rotation + 'deg)';
+  }
+
   Homey.api('GET', '/data').then(function(dev) {
     if (dev) {
       updateStatus(dev);
