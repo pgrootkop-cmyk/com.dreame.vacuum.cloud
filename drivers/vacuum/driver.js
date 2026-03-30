@@ -460,11 +460,11 @@ class DreameVacuumDriver extends Homey.Driver {
         if (result.uid) {
           this.homey.app.saveUid(result.uid);
         }
-        this.homey.app.sendDiagnostic('Pairing: login success', { region: country });
+        this.log('Pairing: login success', { region: country });
         return true;
       } catch (err) {
         this.error('Login failed:', err.message);
-        this.homey.app.sendDiagnostic('Pairing: login failed', { region: country, error: err.message });
+        this.log('Pairing: login failed', { region: country, error: err.message });
         throw new Error(`Login failed: ${err.message}`);
       }
     });
@@ -474,7 +474,7 @@ class DreameVacuumDriver extends Homey.Driver {
         api = this.homey.app.getApi();
       }
       if (!api) {
-        this.homey.app.sendDiagnostic('Pairing: list_devices called without API', { region: country }, 'warning');
+        this.log('Pairing: list_devices called without API', { region: country }, 'warning');
         throw new Error('Not logged in');
       }
 
@@ -494,7 +494,7 @@ class DreameVacuumDriver extends Homey.Driver {
             },
           }));
 
-        this.homey.app.sendDiagnostic('Pairing: devices discovered', {
+        this.log('Pairing: devices discovered', {
           region: country,
           totalDevices: devices.length,
           vacuums: vacuums.length,
@@ -504,7 +504,7 @@ class DreameVacuumDriver extends Homey.Driver {
         return vacuums;
       } catch (err) {
         this.error('Failed to list devices:', err.message);
-        this.homey.app.sendDiagnostic('Pairing: device discovery failed', { region: country, error: err.message }, 'error');
+        this.log('Pairing: device discovery failed', { region: country, error: err.message }, 'error');
         throw new Error('Failed to list devices. Please try again.');
       }
     });
@@ -654,11 +654,11 @@ class DreameVacuumDriver extends Homey.Driver {
           d.restartPolling();
         }
 
-        this.homey.app.sendDiagnostic('Repair: login success', { region: country });
+        this.log('Repair: login success', { region: country });
         return true;
       } catch (err) {
         this.error('Repair login failed:', err.message);
-        this.homey.app.sendDiagnostic('Repair: login failed', { region: country, error: err.message }, 'error');
+        this.log('Repair: login failed', { region: country, error: err.message }, 'error');
         throw new Error('Login failed. Check your credentials.');
       }
     });

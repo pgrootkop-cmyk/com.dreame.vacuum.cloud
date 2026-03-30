@@ -873,31 +873,19 @@ class DreameVacuumDevice extends Homey.Device {
   }
 
   /**
-   * Send diagnostic log to Sentry when user has opted in.
-   * @param {'debug'|'info'|'warning'|'error'|'fatal'} level
+   * Log a diagnostic message (visible via homey app run --remote).
    */
   _diag(message, extra, level = 'info') {
-    // Always log to console so --remote captures it
     if (level === 'error' || level === 'fatal') this.error(`[DIAG] ${message}`);
     else if (level === 'warning') this.log(`[DIAG:WARN] ${message}`);
     else this.log(`[DIAG] ${message}`);
-    this.homey.app.sendDiagnostic(message, {
-      ...extra,
-      did: this._did,
-      model: this.getStoreValue('model') || 'unknown',
-    }, level);
   }
 
   /**
-   * Send error to Sentry when user has opted in.
-   * @param {'warning'|'error'|'fatal'} level
+   * Log an error (visible via homey app run --remote).
    */
   _diagError(err, extra, level = 'error') {
-    this.homey.app.sendError(err, {
-      ...extra,
-      did: this._did,
-      model: this.getStoreValue('model') || 'unknown',
-    }, level);
+    this.error(`[DIAG:ERR] ${err.message || err}`);
   }
 
   _getApi() {

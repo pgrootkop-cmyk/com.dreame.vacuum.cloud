@@ -200,14 +200,6 @@
       <div id="consumables"></div>
     </fieldset>
 
-    <fieldset class="homey-form-fieldset">
-      <legend class="homey-form-legend">Diagnostics</legend>
-      <label class="homey-form-checkbox">
-        <input class="homey-form-checkbox-input" type="checkbox" id="diagnosticToggle" onchange="toggleDiagnostic()" />
-        <span class="homey-form-checkbox-checkmark"></span>
-        <span class="homey-form-checkbox-text">Share diagnostic logs to help improve app stability. No personal data is collected.</span>
-      </label>
-    </fieldset>
   </div>
   <div class="no-data" id="loading">Loading...</div>
 
@@ -222,9 +214,6 @@ var _wpPlaceState = { active: false };
 
 function onHomeyReady(Homey) {
   _homey = Homey;
-  Homey.get('diagnosticLogging', function(err, val) {
-    document.getElementById('diagnosticToggle').checked = val === true;
-  });
   loadAll();
 
   // Refresh data when page becomes visible (e.g. navigating back to settings)
@@ -730,10 +719,6 @@ function map(d) {
     var state = (d.capabilities || {}).vacuumcleaner_state || 'unknown';
     if (state !== 'charging') startSettingsPolling();
   });
-}
-
-function toggleDiagnostic() {
-  _homey.set('diagnosticLogging', document.getElementById('diagnosticToggle').checked);
 }
 
 function cap(s) { return s ? s.charAt(0).toUpperCase() + s.slice(1) : '-'; }

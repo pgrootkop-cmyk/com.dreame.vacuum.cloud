@@ -61,5 +61,8 @@
   },
   "0.0.36": {
     "en": "quick fixes"
+  },
+  "0.0.37": {
+    "en": "Remove Sentry remote logging\n\n- Removed SentryLite and all remote diagnostic logging\n- All diagnostics now go to local Homey log (visible via homey app run --remote)\n- Removed diagnostics toggle from app settings (no longer needed)\n- Smaller app footprint, no external dependencies for logging"
   }
 }
