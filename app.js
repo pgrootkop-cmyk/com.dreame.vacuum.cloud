@@ -170,10 +170,13 @@ class DreameApp extends Homey.App {
     const driver = this.homey.drivers.getDriver('vacuum');
     const devices = driver ? driver.getDevices() : [];
     if (!did) return devices[0] || null;
-    // Match by Dreame DID first
+    // Match by Dreame DID
     const byDid = devices.find(d => d.getData().id === did);
     if (byDid) return byDid;
-    // Fallback: match by index (for widget single-device case)
+    // Match by Homey device UUID (widget Homey.getDeviceIds() returns these)
+    const byHomeyId = devices.find(d => d.id === did);
+    if (byHomeyId) return byHomeyId;
+    // Fallback
     return devices[0] || null;
   }
 

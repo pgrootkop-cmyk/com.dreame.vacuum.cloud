@@ -1306,8 +1306,6 @@ class DreameVacuumDevice extends Homey.Device {
    */
   _handleMqttProperties(params) {
     this._lastMqttMessage = Date.now();
-    const propKeys = params.map(p => `${p.siid}-${p.piid}`).join(',');
-    this._diag(`[MQTT:IN] ${params.length} props: ${propKeys}`, null, 'debug');
 
     for (const p of params) {
       const key = `${p.siid}-${p.piid}`;

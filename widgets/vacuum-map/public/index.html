@@ -231,7 +231,7 @@ function startPolling(Homey, colorScheme) {
       }).catch(function() {});
     }
     // Also update status
-    Homey.api('GET', '/data').then(function(dev) {
+    Homey.api('GET', '/data' + didFirst).then(function(dev) {
       if (dev) {
         updateStatus(dev);
         var state = (dev.capabilities || {}).vacuumcleaner_state || 'unknown';
