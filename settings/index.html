@@ -150,6 +150,26 @@
         </select>
       </div>
     </fieldset>
+
+    <fieldset class="homey-form-fieldset" id="floorFieldset" style="display:none;">
+      <legend class="homey-form-legend">Floor</legend>
+      <div class="homey-form-group">
+        <select class="homey-form-select" id="floorSelect" onchange="selectFloor()">
+        </select>
+      </div>
+    </fieldset>
+
+    <fieldset class="homey-form-fieldset">
+      <legend class="homey-form-legend">Map Rotation</legend>
+      <div class="homey-form-group">
+        <select class="homey-form-select" id="rotationSelect" onchange="changeRotation()">
+          <option value="0">0°</option>
+          <option value="90">90°</option>
+          <option value="180">180°</option>
+          <option value="270">270°</option>
+        </select>
+      </div>
+    </fieldset>
   </form>
 
   <div id="content" style="display:none;padding-top:15px;">
@@ -275,29 +295,61 @@ function status(d) {
   }).join('');
 }
 
-function rooms(d) {
-  var el = document.getElementById('roomList');
-  if (!d.rooms || !d.rooms.length) { el.innerHTML = '<li>No rooms discovered</li>'; return; }
-  el.innerHTML = d.rooms.map(function(r) {
-    return '<li><span>' + r.name + '</span><span class="room-id">ID ' + r.id + '</span></li>';
-  }).join('');
+function selectFloor() {
+  var floorId = document.getElementById('floorSelect').value;
+  if (!floorId || !_did) return;
+  _currentFloorId = floorId;
+  _homey.set('settingsFloorId', floorId); // Persist selection
+  var d = _devices.find(function(x) { return x.id === _did; });
+  if (!d) return;
+  // Fetch rooms for selected floor
+  _homey.api('GET', '/rooms?did=' + encodeURIComponent(_did) + '&floorId=' + encodeURIComponent(floorId), null, function(err, data) {
+    if (!err && data) renderRoomList(data);
+  });
+  // Active floor: live map. Other floor: saved snapshot.
+  if (String(floorId) === String(d.selectedFloorId)) {
+    map(d);
+  } else {
+    mapForFloor(d, floorId);
+  }
+  loadZones(); // Reload zones filtered by floor
 }
 
-function consumables(d) {
-  var c = d.capabilities;
-  var items = [
-    ['Main Brush', c.dreame_main_brush_left],
-    ['Side Brush', c.dreame_side_brush_left],
-    ['Filter', c.dreame_filter_left],
-    ['Mop Pad', c.dreame_mop_pad_left],
-    ['Sensor', c.dreame_sensor_dirty_left],
-  ].filter(function(i) { return i[1] != null; });
-  if (!items.length) { document.getElementById('consumables').innerHTML = '<div class="no-data">No data</div>'; return; }
-  document.getElementById('consumables').innerHTML = items.map(function(i) {
-    var col = i[1] > 30 ? '#34c759' : i[1] > 10 ? '#ff9500' : '#ff3b30';
-    return '<div class="cons-row"><div class="cons-header"><span>' + i[0] + '</span><span style="font-weight:600">' + i[1] + '%</span></div>'
-      + '<div class="cons-bar"><div class="cons-fill" style="width:' + i[1] + '%;background:' + col + '"></div></div></div>';
+function mapForFloor(d, floorId) {
+  var canvas = document.getElementById('mapCanvas');
+  var noMap = document.getElementById('noMap');
+  canvas.style.display = 'none'; noMap.style.display = 'block'; noMap.textContent = 'Loading map...';
+  _homey.api('GET', '/renderedMap?did=' + encodeURIComponent(d.id) + '&floorId=' + encodeURIComponent(floorId), null, function(err, data) {
+    if (err || !data || !data.width) { noMap.textContent = 'No map data for this floor'; return; }
+    renderMapToCanvas(canvas, data, { showRoomNames: true });
+    canvas.style.display = 'block'; noMap.style.display = 'none';
+    drawZonesOverlay();
+  });
+}
+
+// ---- Zone Drawing ----
+
+function loadZones() {
+  _homey.api('GET', '/zones?did=' + encodeURIComponent(_did), null, function(err, data) {
+    _zones = (!err && Array.isArray(data)) ? data : [];
+    renderZoneList();
+    drawZonesOverlay();
+  });
+}
+
+function renderZoneList() {
+  var el = document.getElementById('zoneList');
+  var filtered = _zones.filter(function(z) { return !_currentFloorId || !z.floorId || String(z.floorId) === String(_currentFloorId); });
+  if (filtered.length === 0) { el.innerHTML = '<li class="no-data">No zones configured for this floor</li>'; return; }
+  el.innerHTML = filtered.map(function(z) {
+    var eid = z.id.replace(/'/g, "\\'");
+    return '<li><span class="zone-name" id="zname_' + z.id + '">' + z.name + '</span><span class="zone-actions">'
+      + '<button class="zone-btn rename" onclick="renameZone(\'' + eid + '\')" title="Rename">&#9998;</button>'
+      + '<button class="zone-btn redraw" onclick="redrawZone(\'' + eid + '\')" title="Redraw on map">&#8634;</button>'
+      + '<button class="zone-btn delete" onclick="deleteZone(\'' + eid + '\')" title="Delete">\u2715</button>'
+      + '</span></li>';
   }).join('');
+  drawZonesOverlay();
 }
 
 // ---- Zone Drawing ----

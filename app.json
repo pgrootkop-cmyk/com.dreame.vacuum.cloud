@@ -1613,6 +1613,35 @@
       },
       {
         "title": {
+          "en": "Select floor"
+        },
+        "titleFormatted": {
+          "en": "Switch to floor [[floor]]"
+        },
+        "hint": {
+          "en": "Switch to a different floor map. Only available on devices with multi-floor map enabled. After switching, room cleaning will use the selected floor's rooms."
+        },
+        "args": [
+          {
+            "name": "device",
+            "type": "device",
+            "filter": "driver_id=vacuum"
+          },
+          {
+            "type": "autocomplete",
+            "name": "floor",
+            "title": {
+              "en": "Floor"
+            },
+            "placeholder": {
+              "en": "Search floors..."
+            }
+          }
+        ],
+        "id": "select_floor"
+      },
+      {
+        "title": {
           "en": "Set auto empty frequency"
         },
         "titleFormatted": {
@@ -3323,6 +3352,50 @@
             "en": "Show status bar"
           },
           "value": true
+        },
+        {
+          "id": "rotation",
+          "type": "dropdown",
+          "title": {
+            "en": "Map rotation"
+          },
+          "value": "0",
+          "values": [
+            {
+              "id": "0",
+              "title": {
+                "en": "0°"
+              }
+            },
+            {
+              "id": "90",
+              "title": {
+                "en": "90°"
+              }
+            },
+            {
+              "id": "180",
+              "title": {
+                "en": "180°"
+              }
+            },
+            {
+              "id": "270",
+              "title": {
+                "en": "270°"
+              }
+            }
+          ]
+        },
+        {
+          "id": "floor",
+          "type": "autocomplete",
+          "title": {
+            "en": "Floor"
+          },
+          "hint": {
+            "en": "Select which floor map to display (only for multi-floor setups)"
+          }
         }
       ],
       "height": "75%",
@@ -3624,6 +3697,15 @@
         "en": "min"
       },
       "insights": true
+    },
+    "dreame_current_floor": {
+      "type": "string",
+      "title": {
+        "en": "Current floor"
+      },
+      "getable": true,
+      "setable": false,
+      "uiComponent": "sensor"
     },
     "dreame_current_room": {
       "type": "string",

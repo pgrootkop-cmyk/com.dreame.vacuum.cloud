@@ -83,7 +83,9 @@ const PROP = {
   MAP_DATA: { siid: 6, piid: 1 },
   MAP_OBJECT_NAME: { siid: 6, piid: 2 },
   MAP_EXTEND_DATA: { siid: 6, piid: 3 },
-  MAP_LIST: { siid: 6, piid: 39 },
+  MAP_LIST: { siid: 6, piid: 8 },
+  MULTI_FLOOR_MAP: { siid: 6, piid: 7 },
+  QUICK_COMMAND: { siid: 4, piid: 48 },
 };
 
 // SIID/AIID action constants
@@ -103,6 +105,7 @@ const ACTION = {
   CLEAR_WARNING:    { siid: 4, aiid: 3 },
   START_WASHING:    { siid: 4, aiid: 4 },
   REQUEST_MAP:      { siid: 6, aiid: 1 },
+  UPDATE_MAP_DATA:  { siid: 6, aiid: 2 },
 };
 
 // Dreame state → Homey vacuumcleaner_state mapping
@@ -740,18 +743,22 @@ class DreameVacuumDevice extends Homey.Device {
     this._forceNextPoll = false;
     this._lastTriggeredError = null;
     this._consumableLowNotified = {};
-    this._rooms = this.getStoreValue('rooms') || [];
+    this._roomsFallback = this.getStoreValue('rooms') || [];
     this._cleaningRoomIds = [];
     this._mqttConnected = false;
     this._lastMqttMessage = 0;
     this._currentPollInterval = POLL_FAST;
     this._mqttListeners = null; // track our own listeners for cleanup
     this._mapRefreshTimer = null;
+    this._cleaningMapTimer = null; // periodic map re-request during cleaning
     this._mqttRetryTimer = null; // track connect retry timer
     this._mqttRestartTimer = null; // track full restart timer
     this._refreshingToken = false; // guard concurrent token refresh
     this._operationalState = 'idle'; // track detailed state for triggers
     this._isStuck = false;           // track stuck status for triggers
+    this._lastDreameState = 0;       // track raw Dreame state for zone/segment detection
+    this._wasZoneCleaning = false;   // track zone cleaning across state transitions (34→5→6)
+    this._wasCleaningSession = false; // track that a cleaning session was active (for deferred finished triggers)
     this._lastWaterTankInstalled = null; // track water tank for change triggers
     this._robotPositionRaw = null;    // live robot position (raw Dreame coords) from P-frames
     this._robotCurrentRoomId = null;  // segment ID the robot is currently in
@@ -792,6 +799,7 @@ class DreameVacuumDevice extends Homey.Device {
       'dreame_main_brush_left', 'dreame_side_brush_left', 'dreame_filter_left',
       'dreame_sensor_dirty_left', 'dreame_error',
       'dreame_current_room',
+      'dreame_current_floor',
     ];
     for (const cap of requiredCapabilities) {
       if (!this.hasCapability(cap)) {
@@ -895,6 +903,20 @@ class DreameVacuumDevice extends Homey.Device {
       await this._fetchBindDomain();
     }
 
+    // Set initial floor capability from cached data
+    if (Object.keys(this._savedMaps).length > 0 && this._selectedMapId) {
+      this._updateCurrentFloorCapability();
+    }
+
+    this._diag('[INIT] Device ready', {
+      platform: this.homey.platform,
+      bindDomain: !!this._bindDomain,
+      cachedRooms: this.getRooms().length,
+      cachedFloors: Object.keys(this._savedMaps).length,
+      multiFloor: this._multiFloorEnabled,
+      probeComplete: this._probeComplete,
+    }, 'info');
+
     // Start polling (HTTP as primary on Cloud, fallback on Local)
     this.restartPolling();
 
@@ -915,7 +937,7 @@ class DreameVacuumDevice extends Homey.Device {
         await this.setStoreValue('bindDomain', this._bindDomain);
       }
     } catch (err) {
-      this.error('Failed to fetch bindDomain:', err.message);
+      this._diag(`[API] Failed to fetch bindDomain: ${err.message}`, null, 'warning');
     }
   }
 
@@ -944,16 +966,14 @@ class DreameVacuumDevice extends Homey.Device {
   }
 
   /**
-   * Connect to Dreame MQTT broker for real-time property updates.
+   * Register this device with the shared MQTT client for real-time updates.
+   * The MQTT client manages the single broker connection; each device gets its own topic.
    */
   async _connectMqtt() {
     try {
       const api = this.homey.app.getApi();
-      if (!api) {
-        return;
-      }
+      if (!api) return;
 
-      // Ensure we have a valid token and uid
       if (!api.accessToken || !api.uid) {
         await api.login();
         this.homey.app.saveUid(api.uid);
@@ -970,35 +990,28 @@ class DreameVacuumDevice extends Homey.Device {
 
       const mqttClient = this.homey.app.getMqtt();
 
-      // Remove previous listeners from this device (prevent leaks)
+      // Remove previous event listeners from this device (prevent leaks on re-register)
       this._removeMqttListeners(mqttClient);
 
       // Create bound listeners we can track and remove later
       const listeners = {
-        properties: (did, params) => {
-          if (did === this._did || !did) {
-            this._handleMqttProperties(params);
-          }
-        },
         connected: () => {
           this._mqttConnected = true;
           this._lastMqttMessage = Date.now();
-          const cachedRooms = this._rooms ? this._rooms.length : 0;
+          const cachedRooms = this.getRooms().length;
           this._diag(`[MQTT] Connected, ${cachedRooms} cached rooms`, null, 'info');
           this._adjustPolling();
           this._stopMapRefreshTimer();
           this._requestMapViaMqtt();
 
-          // Set charger room if currently docked and current_room is empty
           const curState = this.getCapabilityValue('vacuumcleaner_state');
           const curRoom = this.getCapabilityValue('dreame_current_room');
           if ((curState === 'docked' || curState === 'charging') && (!curRoom || curRoom === '-')) {
             this._detectChargerRoom();
           }
 
-          // If no 6-3 arrives within 60s, log it and try HTTP fallback
           this._mapResponseTimeout = this.homey.setTimeout(() => {
-            if (!this._rooms || this._rooms.length === 0) {
+            if (this.getRooms().length === 0) {
               this._diag('[MAP] No 6-3 received after 60s, trying HTTP fallback', null, 'warning');
               this._refreshMapViaHttp().catch(() => {});
             }
@@ -1011,14 +1024,12 @@ class DreameVacuumDevice extends Homey.Device {
           this._startMapRefreshTimer();
         },
         auth_error: () => {
-          this.log('[MQTT] Auth error — refreshing token');
           this._diag('[MQTT] Auth error', null, 'error');
           this._mqttConnected = false;
           this._adjustPolling();
           this._handleMqttAuthError();
         },
         gave_up: () => {
-          this.log('[MQTT] Gave up reconnecting — relying on HTTP polling, will retry in 30min');
           this._diag('[MQTT] Gave up reconnecting', null, 'fatal');
           this._mqttConnected = false;
           this._adjustPolling();
@@ -1028,26 +1039,24 @@ class DreameVacuumDevice extends Homey.Device {
       };
       this._mqttListeners = { client: mqttClient, listeners };
 
-      mqttClient.on('properties', listeners.properties);
       mqttClient.on('connected', listeners.connected);
       mqttClient.on('disconnected', listeners.disconnected);
       mqttClient.on('auth_error', listeners.auth_error);
       mqttClient.on('gave_up', listeners.gave_up);
 
-      this._diag('[MQTT] Connecting', { uid, model, region, broker: this._bindDomain }, 'debug');
-      await mqttClient.connect({
+      this._diag('[MQTT] Registering device', { uid, model, region, broker: this._bindDomain }, 'debug');
+
+      // Register this device — MQTT client handles connection and topic subscription
+      await mqttClient.register(this._did, {
         uid,
         accessToken: api.accessToken,
         bindDomain: this._bindDomain,
-        did: this._did,
         model,
         country: region,
-      });
+      }, (params) => this._handleMqttProperties(params));
 
-      // Start proactive token refresh to prevent auth expiry
       this._startTokenRefreshTimer();
     } catch (e) {
-      this.error('[MQTT] Connect error:', e.message);
       this._diagError(e, { context: 'mqtt_connect' });
       this._startMapRefreshTimer();
       this._mqttRetryTimer = this.homey.setTimeout(() => this._connectMqtt(), 30000);
@@ -1063,7 +1072,7 @@ class DreameVacuumDevice extends Homey.Device {
 
   /**
    * Schedule a full MQTT restart after giving up.
-   * Fresh login + reconnect attempt after 30 minutes.
+   * Fresh login + re-register after 30 minutes.
    */
   _scheduleMqttRestart() {
     this._cancelMqttRestartTimer();
@@ -1084,7 +1093,6 @@ class DreameVacuumDevice extends Homey.Device {
   /**
    * Start proactive token refresh timer.
    * Refreshes token before expiry to prevent auth failures on MQTT and API.
-   * Matches ioBroker pattern: setInterval((expires_in - 100) * 1000).
    */
   _startTokenRefreshTimer() {
     this._stopTokenRefreshTimer();
@@ -1092,7 +1100,7 @@ class DreameVacuumDevice extends Homey.Device {
     if (!api || !api.tokenExpiry) return;
 
     const msUntilRefresh = api.tokenExpiry - Date.now() - (TOKEN_REFRESH_MARGIN * 1000);
-    const delay = Math.max(msUntilRefresh, 60000); // At least 1 minute
+    const delay = Math.max(msUntilRefresh, 60000);
     this._diag(`[TOKEN] Proactive refresh scheduled in ${Math.round(delay / 1000)}s`, null, 'debug');
 
     this._tokenRefreshTimer = this.homey.setTimeout(async () => {
@@ -1103,12 +1111,9 @@ class DreameVacuumDevice extends Homey.Device {
         this._diag('[TOKEN] Proactive refresh triggered', null, 'debug');
         await currentApi.refreshAccessToken();
         this.homey.app.saveUid(currentApi.uid);
-        // MQTT gets new token via onTokenUpdate → updateToken
-        // Schedule next refresh
         this._startTokenRefreshTimer();
       } catch (e) {
-        this.error('[TOKEN] Proactive refresh failed:', e.message);
-        // Retry in 5 minutes
+        this._diag(`[TOKEN] Proactive refresh failed: ${e.message}`, null, 'warning');
         this._tokenRefreshTimer = this.homey.setTimeout(() => {
           this._tokenRefreshTimer = null;
           this._startTokenRefreshTimer();
@@ -1125,37 +1130,30 @@ class DreameVacuumDevice extends Homey.Device {
   }
 
   /**
-   * Full MQTT restart: fresh login, new connection from scratch.
+   * Full MQTT restart: fresh login, re-register from scratch.
    */
   async _restartMqtt() {
     try {
       const api = this.homey.app.getApi();
       if (!api) return;
 
-      // Fresh login to get new tokens
       await api.login();
       this.homey.app.saveUid(api.uid);
-
-      // Re-fetch bindDomain in case it changed
       await this._fetchBindDomain();
 
-      // Clean up old listeners and reconnect
-      const mqttClient = this.homey.app.getMqtt();
-      this._removeMqttListeners(mqttClient);
+      this._removeMqttListeners();
       this._stopMapRefreshTimer();
 
       await this._connectMqtt();
       this.log('[MQTT] Full restart succeeded');
     } catch (e) {
-      this.error('[MQTT] Full restart failed:', e.message);
       this._diagError(e, { context: 'mqtt_restart' });
-      // Schedule another attempt
       this._scheduleMqttRestart();
     }
   }
 
   /**
-   * Remove our own MQTT listeners without affecting other devices.
+   * Remove our own MQTT event listeners without affecting other devices.
    */
   _removeMqttListeners(mqttClient) {
     if (this._mqttListeners) {
@@ -1174,20 +1172,17 @@ class DreameVacuumDevice extends Homey.Device {
    * Handle MQTT auth error — refresh token and reconnect.
    */
   async _handleMqttAuthError() {
-    if (this._refreshingToken) return; // prevent concurrent refresh
+    if (this._refreshingToken) return;
     this._refreshingToken = true;
     try {
       const api = this.homey.app.getApi();
       if (!api) return;
       await api.login();
       this.homey.app.saveUid(api.uid);
-      // updateToken triggers reconnect with fresh credentials
       const mqttClient = this.homey.app.getMqtt();
       mqttClient.updateToken(api.accessToken);
     } catch (e) {
-      this.error('[MQTT] Token refresh failed:', e.message);
       this._diagError(e, { context: 'mqtt_token_refresh' });
-      // Polling continues as fallback
     } finally {
       this._refreshingToken = false;
     }
@@ -1207,6 +1202,26 @@ class DreameVacuumDevice extends Homey.Device {
     if (this._mapRefreshTimer) {
       this.homey.clearInterval(this._mapRefreshTimer);
       this._mapRefreshTimer = null;
+    }
+  }
+
+  /**
+   * Start periodic map re-request during cleaning so the device pushes fresh 6-3 map data.
+   * This keeps the stored map up-to-date with newly explored areas.
+   */
+  _startCleaningMapRefresh() {
+    if (this._cleaningMapTimer) return;
+    this._cleaningMapTimer = this.homey.setInterval(() => {
+      if (this._mqttConnected) {
+        this._requestMapViaMqtt().catch(() => {});
+      }
+    }, 15000); // Every 15s during cleaning
+  }
+
+  _stopCleaningMapRefresh() {
+    if (this._cleaningMapTimer) {
+      this.homey.clearInterval(this._cleaningMapTimer);
+      this._cleaningMapTimer = null;
     }
   }
 
@@ -1236,7 +1251,8 @@ class DreameVacuumDevice extends Homey.Device {
         this._diag('[MAP] HTTP fallback: no cached map path available', null, 'warning');
       }
     } catch (e) {
-      this._diag(`[MAP] HTTP fallback error: ${e.message}`, null, 'warning');
+      this._diag(`[MAP] HTTP fallback error: ${e.message}`, null, 'error');
+      this._diagError(e, { context: 'http_map_fallback' });
     }
   }
 
@@ -1289,8 +1305,7 @@ class DreameVacuumDevice extends Homey.Device {
     const rooms = parseMapRooms(mapStr, parseLogger, mapKey, modelIv, lang);
     this._diag(`[MAP] Parsed ${rooms.length} rooms from map data`, null, 'debug');
     if (rooms.length > 0) {
-      this._rooms = rooms;
-      this.setStoreValue('rooms', rooms).catch(this.error);
+      this._setCurrentFloorRooms(rooms);
     }
 
     // Cache map data for future widget use (object name + dimensions)
@@ -1298,6 +1313,9 @@ class DreameVacuumDevice extends Homey.Device {
     this.setStoreValue('mapObjectName', objectName).catch(this.error);
     this.setStoreValue('mapRawBase64', mapKey ? mapStr + ',' + mapKey : mapStr).catch(this.error);
     this._rismCache = null; // invalidate cached rism so _detectCurrentRoom re-decodes
+
+    // Extract current map ID for multi-floor tracking
+    this._extractFloorInfoFromMap(mapStr, mapKey, modelIv);
   }
 
   /**
@@ -1319,13 +1337,12 @@ class DreameVacuumDevice extends Homey.Device {
       // Extract robot position from every 6-1 frame for live tracking.
       if (key === '6-1' && value) {
         this._extractRobotPosition(value);
-        if (!this._rooms || this._rooms.length === 0) {
+        if (this.getRooms().length === 0) {
           const lang = this._getLanguage();
           const rooms = parseMapRooms(value, (msg) => { this._diag(msg, null, 'debug'); }, null, null, lang);
           if (rooms.length > 0) {
             this._diag(`[MAP] Bootstrap rooms from 6-1 P-frame: ${rooms.length} segments`, null, 'debug');
-            this._rooms = rooms;
-            this.setStoreValue('rooms', rooms).catch(this.error);
+            this._setCurrentFloorRooms(rooms);
           }
         }
         continue;
@@ -1408,6 +1425,11 @@ class DreameVacuumDevice extends Homey.Device {
             this._fireWaypointArrivedTrigger();
           }
 
+          // Waypoint navigation can also end at idle/stopped (robot stays at destination)
+          if ((homeyState === 'stopped' || homeyState === 'docked') && this._wasCruisingPoint) {
+            this._fireWaypointArrivedTrigger();
+          }
+
           // If stopped/error (not transitioning through to dock), reset session flag
           if (homeyState === 'stopped' && this._wasCleaningSession) {
             this._wasCleaningSession = false;
@@ -1421,6 +1443,8 @@ class DreameVacuumDevice extends Homey.Device {
               this._detectChargerRoom();
             } else {
               this.setCapabilityValue('dreame_current_room', '-').catch(this.error);
+              // Reset cleaning session flag if robot goes to a non-dock state (e.g. stopped/error)
+              this._wasCleaningSession = false;
             }
           }
         }
@@ -1667,7 +1691,7 @@ class DreameVacuumDevice extends Homey.Device {
             }
           }
         } catch (e) {
-          this.error('Failed to parse AUTO_SWITCH_SETTINGS:', value);
+          this._diag(`[PROP] Failed to parse AUTO_SWITCH_SETTINGS: ${e.message}`, { rawValue: String(value).slice(0, 200) }, 'warning');
         }
         break;
       }
@@ -1862,6 +1886,38 @@ class DreameVacuumDevice extends Homey.Device {
       case '12-4': // TOTAL_CLEANED_AREA
         await this.setCapabilityValue('dreame_total_cleaned_area', value).catch(this.error);
         break;
+
+      case '6-7': { // MULTI_FLOOR_MAP (0 = disabled, 1 = enabled)
+        const wasEnabled = this._multiFloorEnabled;
+        this._multiFloorEnabled = !!value;
+        if (this._multiFloorEnabled !== wasEnabled) {
+          this.setStoreValue('multiFloorEnabled', this._multiFloorEnabled).catch(this.error);
+          this._diag(`[MAP] Multi-floor map: ${this._multiFloorEnabled}`, null, 'info');
+        }
+        // When multi-floor is first detected, request map to trigger MAP_LIST push via MQTT
+        if (this._multiFloorEnabled && !wasEnabled) {
+          this._requestMapViaMqtt().catch(() => {});
+        }
+        break;
+      }
+
+      case '6-8': { // MAP_LIST (JSON with object_name for map list file)
+        this._diag(`[MAP] MAP_LIST raw (type=${typeof value}): ${String(value).slice(0, 200)}`, null, 'debug');
+        if (value && typeof value === 'string' && value !== '') {
+          try {
+            const mapListInfo = JSON.parse(value);
+            const objectName = mapListInfo.object_name;
+            if (objectName && objectName !== this._mapListObjectName) {
+              this._mapListObjectName = objectName;
+              this._diag(`[MAP] Map list object: ${objectName}`, null, 'debug');
+              this._fetchMapList().catch(e => this._diag(`[MAP] Fetch map list error: ${e.message}`, null, 'error'));
+            }
+          } catch (e) {
+            this._diag(`[MAP] MAP_LIST parse error: ${e.message}`, null, 'error');
+          }
+        }
+        break;
+      }
     }
   }
 
@@ -1964,6 +2020,7 @@ class DreameVacuumDevice extends Homey.Device {
         PROP.CHARGING_STATUS, PROP.DRYING_PROGRESS, PROP.DRAINAGE_STATUS,
         PROP.DETERGENT_STATUS, PROP.HOT_WATER_STATUS, PROP.DOCK_CLEANING_STATUS,
         PROP.STATUS, PROP.TASK_STATUS,
+        PROP.MULTI_FLOOR_MAP, PROP.MAP_LIST,
       ];
       for (const p of probeableEvery) {
         const pk = `${p.siid}-${p.piid}`;
@@ -2001,16 +2058,22 @@ class DreameVacuumDevice extends Homey.Device {
       const results = await api.getProperties(this._did, this._bindDomain, props);
 
       if (!Array.isArray(results)) {
-        this.error('Unexpected poll result:', results);
+        this._diag('[POLL] Unexpected poll result (not an array)', { result: JSON.stringify(results).slice(0, 300) }, 'error');
         return;
       }
 
       for (const r of results) {
         if (r.code !== undefined && r.code !== 0) {
-          // Track unsupported properties (code -2)
+          // Track unsupported properties (code -2), but exclude floor props (intermittent)
           if (r.code === -2 && !this._probeComplete) {
             const propKey = `${r.siid}-${r.piid}`;
-            this._unsupportedProps.add(propKey);
+            if (propKey !== '6-7' && propKey !== '6-8') {
+              this._unsupportedProps.add(propKey);
+            }
+          }
+          // Log floor prop errors specifically
+          if (r.siid === 6 && (r.piid === 7 || r.piid === 8)) {
+            this._diag(`[MAP] Floor prop ${r.siid}-${r.piid} error: code=${r.code}`, null, 'warning');
           }
           continue;
         }
@@ -2051,6 +2114,13 @@ class DreameVacuumDevice extends Homey.Device {
             await this.removeCapability(capName);
           }
         }
+
+        this._diag('[PROBE] Complete', {
+          unsupported: [...this._unsupportedProps],
+          capabilities: this.getCapabilities().length,
+          multiFloor: this._multiFloorEnabled,
+          floors: Object.keys(this._savedMaps).length,
+        }, 'info');
       }
 
       // Mark device available after successful poll
@@ -2058,9 +2128,10 @@ class DreameVacuumDevice extends Homey.Device {
         await this.setAvailable();
       }
     } catch (err) {
-      this.error('Poll failed:', err.message);
+      this._diagError(err, { context: 'poll' });
 
       if (err.message.includes('401') || err.message.includes('Authentication') || err.message.includes('Login failed')) {
+        this._diag('[POLL] Auth failure — device set unavailable', null, 'error');
         await this.setUnavailable('Authentication failed. Use Repair to reconnect.');
       }
     }
@@ -2315,9 +2386,401 @@ class DreameVacuumDevice extends Homey.Device {
   }
 
   getRooms() {
-    return this._rooms || [];
+    if (this._selectedMapId && this._savedMaps[this._selectedMapId]) {
+      return this._savedMaps[this._selectedMapId].rooms || [];
+    }
+    return this._roomsFallback || [];
   }
 
+  _setCurrentFloorRooms(rooms) {
+    if (this._selectedMapId && this._savedMaps[this._selectedMapId]) {
+      this._savedMaps[this._selectedMapId].rooms = rooms;
+      this.setStoreValue('savedMaps', this._savedMaps).catch(this.error);
+    }
+    this._roomsFallback = rooms;
+    this.setStoreValue('rooms', rooms).catch(this.error);
+  }
+
+  getFloors() {
+    return Object.values(this._savedMaps)
+      .filter(m => m.id != null)
+      .sort((a, b) => a.id - b.id)
+      .map((m, i) => ({ id: m.id, name: m.name || `Floor ${i + 1}`, index: i + 1 }));
+  }
+
+  _updateCurrentFloorCapability() {
+    const floors = this.getFloors();
+    if (!floors.length) return;
+    const floor = floors.find(f => String(f.id) === String(this._selectedMapId));
+    const name = floor ? floor.name : '-';
+    this.setCapabilityValue('dreame_current_floor', name).catch(this.error);
+  }
+
+  isMultiFloor() {
+    return Object.keys(this._savedMaps).length > 1 || this._multiFloorEnabled;
+  }
+
+  /**
+   * Get raw map data for a specific floor (from the map list cache).
+   * Returns the base64 saved map string or null.
+   */
+  getFloorMapData(floorId) {
+    return this._savedMapData[String(floorId)] || null;
+  }
+
+  getRoomsForFloor(mapId) {
+    const map = this._savedMaps[String(mapId)];
+    return map ? (map.rooms || []) : [];
+  }
+
+  getZones() {
+    const zones = [];
+    for (const [mapId, map] of Object.entries(this._savedMaps)) {
+      for (const z of (map.zones || [])) {
+        zones.push({ ...z, floorId: map.id });
+      }
+    }
+    return zones;
+  }
+
+  getZonesForFloor(mapId) {
+    const map = this._savedMaps[String(mapId)];
+    return map ? (map.zones || []) : [];
+  }
+
+  async saveZone(zone) {
+    const key = String(zone.floorId || this._selectedMapId || 'default');
+    if (!this._savedMaps[key]) {
+      this._savedMaps[key] = { id: parseInt(key, 10) || null, name: 'Floor', rooms: [], zones: [] };
+    }
+    if (!this._savedMaps[key].zones) this._savedMaps[key].zones = [];
+    if (zone.id) {
+      const idx = this._savedMaps[key].zones.findIndex(z => z.id === zone.id);
+      if (idx >= 0) this._savedMaps[key].zones[idx] = zone;
+      else this._savedMaps[key].zones.push(zone);
+    } else {
+      zone.id = `zone_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+      this._savedMaps[key].zones.push(zone);
+    }
+    await this.setStoreValue('savedMaps', this._savedMaps);
+    this._diag(`[ZONE] Saved zone "${zone.name}" (${zone.id}) on floor ${key}`, null, 'info');
+    return zone;
+  }
+
+  async updateZone(zoneId, changes) {
+    for (const map of Object.values(this._savedMaps)) {
+      if (!map.zones) continue;
+      const zone = map.zones.find(z => z.id === zoneId);
+      if (zone) {
+        if (changes.name != null) zone.name = changes.name;
+        if (changes.coords != null) zone.coords = changes.coords;
+        await this.setStoreValue('savedMaps', this._savedMaps);
+        this._diag(`[ZONE] Updated zone "${zone.name}" (${zoneId})`, null, 'info');
+        return zone;
+      }
+    }
+    throw new Error(`Zone ${zoneId} not found`);
+  }
+
+  async deleteZone(zoneId) {
+    for (const map of Object.values(this._savedMaps)) {
+      if (map.zones) map.zones = map.zones.filter(z => z.id !== zoneId);
+    }
+    this._diag(`[ZONE] Deleted zone ${zoneId}`, null, 'info');
+    await this.setStoreValue('savedMaps', this._savedMaps);
+  }
+
+  /**
+   * Get discovered shortcuts from the Dreame Home app.
+   */
+  getShortcuts() {
+    return this._shortcuts || [];
+  }
+
+  /**
+   * Start a shortcut by ID.
+   * Protocol (Tasshack v2): start_custom(status=25, params=str(shortcut_id))
+   * SHORTCUT status = 25 (DreameVacuumStatus.SHORTCUT)
+   */
+  async startShortcut(shortcutId) {
+    const id = parseInt(shortcutId, 10);
+    if (isNaN(id) || id < 1) throw new Error('Invalid shortcut ID');
+
+    this._lastCommandTime = Date.now();
+    const api = this._getApi();
+
+    // Start shortcut via START_CUSTOM: piid:1=25 (SHORTCUT status), piid:10=shortcutId
+    await api.callAction(this._did, this._bindDomain, ACTION.START_CUSTOM.siid, ACTION.START_CUSTOM.aiid, [
+      { piid: 1, value: 25 },  // 25 = SHORTCUT status (per Tasshack v2)
+      { piid: 10, value: String(id) },
+    ]);
+
+    this._diag(`[SHORTCUT] Started shortcut ${id}`, null, 'info');
+  }
+
+  /**
+   * Get rooms for all floors (for trigger/condition cards that need cross-floor rooms).
+   * Returns [{ id, name, floorId, floorName }] or falls back to current rooms.
+   */
+  getAllFloorRooms() {
+    const floors = this.getFloors();
+    if (floors.length <= 1) {
+      return this.getRooms().map(r => ({ ...r, floorId: null, floorName: null }));
+    }
+    const all = [];
+    for (const f of floors) {
+      const rooms = this.getRoomsForFloor(f.id);
+      for (const r of rooms) {
+        all.push({ ...r, floorId: f.id, floorName: f.name });
+      }
+    }
+    return all.length > 0 ? all : this.getRooms().map(r => ({ ...r, floorId: null, floorName: null }));
+  }
+
+  /**
+   * Migrate old floor/zone data to the new savedMaps structure.
+   * Called once during the probeVersion 8 upgrade.
+   */
+  async _migrateToSavedMaps() {
+    const oldFloors = this.getStoreValue('floors') || [];
+    const oldFloorRooms = this.getStoreValue('floorRooms') || {};
+    const oldZones = this.getStoreValue('zones') || [];
+    const oldSelectedFloorId = this.getStoreValue('selectedFloorId');
+
+    if (oldFloors.length > 0 || oldZones.length > 0) {
+      const savedMaps = {};
+      for (const f of oldFloors) {
+        const key = String(f.id);
+        savedMaps[key] = {
+          id: f.id,
+          name: f.name || `Floor ${f.index || 1}`,
+          index: f.index || 1,
+          rooms: oldFloorRooms[f.id] || oldFloorRooms[String(f.id)] || [],
+          zones: oldZones.filter(z => z.floorId != null && String(z.floorId) === key),
+          rotation: 0,
+        };
+      }
+      // Zones without floorId go to the selected floor or first floor
+      const defaultKey = oldSelectedFloorId ? String(oldSelectedFloorId) : (oldFloors[0] ? String(oldFloors[0].id) : 'default');
+      const orphanZones = oldZones.filter(z => z.floorId == null);
+      if (orphanZones.length > 0 && savedMaps[defaultKey]) {
+        savedMaps[defaultKey].zones = [...(savedMaps[defaultKey].zones || []), ...orphanZones];
+      }
+      this._savedMaps = savedMaps;
+      await this.setStoreValue('savedMaps', savedMaps);
+      if (oldSelectedFloorId) {
+        this._selectedMapId = String(oldSelectedFloorId);
+        await this.setStoreValue('selectedMapId', this._selectedMapId);
+      }
+      this._diag(`[MIGRATE] Migrated ${oldFloors.length} floors, ${oldZones.length} zones to savedMaps`, null, 'info');
+    }
+  }
+
+  /**
+   * Fetch the map list file from cloud and extract floor/map info.
+   * The MAP_LIST property (6-8) gives us a JSON with an object_name
+   * pointing to a cloud file containing all saved maps.
+   */
+  async _fetchMapList() {
+    if (!this._mapListObjectName) return;
+    try {
+      const api = this._getApi();
+      const model = this.getStoreValue('model') || '';
+      const buffer = await api.getMapData(this._did, this._mapListObjectName, model);
+      const raw = buffer.toString('utf8');
+      const mapInfo = JSON.parse(raw);
+      const mapstr = mapInfo.mapstr;
+      if (!Array.isArray(mapstr) || mapstr.length === 0) {
+        this._diag('[MAP] Map list: no saved maps found', null, 'debug');
+        return;
+      }
+
+      const modelIv = getMapIvForModel(model);
+      const lang = this._getLanguage();
+      const entries = [];
+
+      for (const entry of mapstr) {
+        if (!entry.map) continue;
+        const mapId = this._extractMapIdFromSavedMap(entry.map, model);
+        if (mapId == null) continue;
+
+        // Parse floor name (plain text or base64)
+        let customName = null;
+        if (entry.name) {
+          try {
+            const decoded = Buffer.from(entry.name, 'base64').toString('utf8');
+            customName = (Buffer.from(decoded, 'utf8').toString('base64') === entry.name)
+              ? decoded : entry.name;
+          } catch { customName = entry.name; }
+        }
+
+        // Parse rooms from this floor's saved map
+        let rooms = [];
+        try {
+          rooms = parseMapRooms(entry.map, () => {}, null, modelIv, lang);
+        } catch { /* skip */ }
+
+        entries.push({ mapId, customName, rooms, mapData: entry.map, rotation: entry.angle || 0 });
+      }
+
+      if (entries.length === 0) return;
+
+      // Sort by map_id ascending (matches Dreame app order)
+      entries.sort((a, b) => a.mapId - b.mapId);
+
+      // Build savedMaps, preserving existing zones
+      for (let i = 0; i < entries.length; i++) {
+        const e = entries[i];
+        const key = String(e.mapId);
+        const existing = this._savedMaps[key] || {};
+        this._savedMaps[key] = {
+          id: e.mapId,
+          name: e.customName || `Floor ${i + 1}`,
+          index: i + 1,
+          rooms: e.rooms.length > 0 ? e.rooms : (existing.rooms || []),
+          zones: existing.zones || [],  // Preserve user's zones!
+          rotation: e.rotation,
+        };
+        this._savedMapData[key] = e.mapData;  // In-memory only
+      }
+
+      // Remove floors that no longer exist on the device
+      for (const key of Object.keys(this._savedMaps)) {
+        if (!entries.find(e => String(e.mapId) === key)) {
+          delete this._savedMaps[key];
+          delete this._savedMapData[key];
+        }
+      }
+
+      // Track selected floor from curr_id
+      const currId = mapInfo.curr_id;
+      if (currId != null) {
+        this._selectedMapId = String(currId);
+        this.setStoreValue('selectedMapId', this._selectedMapId).catch(this.error);
+      }
+
+      // Persist savedMaps (without raw pixel data)
+      await this.setStoreValue('savedMaps', this._savedMaps);
+
+      // Sync fallback rooms from current floor
+      if (this._selectedMapId && this._savedMaps[this._selectedMapId]) {
+        this._roomsFallback = this._savedMaps[this._selectedMapId].rooms || [];
+        this.setStoreValue('rooms', this._roomsFallback).catch(this.error);
+      }
+
+      this._updateCurrentFloorCapability();
+
+      const floors = this.getFloors();
+      for (const f of floors) {
+        const roomCount = (this._savedMaps[String(f.id)] || {}).rooms?.length || 0;
+        this._diag(`[MAP] Floor ${f.index}: id=${f.id}, name=${f.name}, rooms=${roomCount}`, null, 'info');
+      }
+    } catch (e) {
+      this._diag(`[MAP] Fetch map list failed: ${e.message}`, null, 'error');
+    }
+  }
+
+  /**
+   * Extract map_id from a base64-encoded saved map binary.
+   * After base64-decode + zlib inflate, map_id is at offset 0 as LE int16
+   * (per Tasshack: DreameVacuumMapDecoder._read_int_16_le(raw_map) at offset 0).
+   */
+  _extractMapIdFromSavedMap(base64Data, model) {
+    try {
+      let buf = Buffer.from(base64Data, 'base64');
+      // Decrypt if needed (same as in parseMapRooms)
+      const modelIv = getMapIvForModel(model);
+      if (modelIv) {
+        try {
+          const keyHash = crypto.createHash('sha256').update(base64Data.slice(0, 16)).digest('hex').slice(0, 32);
+          const decipher = crypto.createDecipheriv('aes-256-cbc', Buffer.from(keyHash, 'utf8'), Buffer.from(modelIv, 'utf8'));
+          decipher.setAutoPadding(false);
+          buf = Buffer.concat([decipher.update(buf), decipher.final()]);
+        } catch { /* not encrypted, use raw */ }
+      }
+      // Decompress
+      try { buf = zlib.inflateSync(buf); } catch { /* may not be compressed */ }
+      if (buf.length < MAP_HEADER_SIZE) return null;
+      // map_id at offset 0, LE int16
+      return buf.readInt16LE(0);
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Switch to a different floor/saved map.
+   * Sends UPDATE_MAP_DATA action with {"sm":{},"mapid":<mapId>}.
+   */
+  async selectFloor(mapId) {
+    if (!this._multiFloorEnabled && Object.keys(this._savedMaps).length <= 1) {
+      throw new Error('Multi-floor map is not enabled on this device');
+    }
+
+    const api = this._getApi();
+    const payload = JSON.stringify({ sm: {}, mapid: mapId });
+
+    await api.callAction(
+      this._did, this._bindDomain,
+      ACTION.UPDATE_MAP_DATA.siid, ACTION.UPDATE_MAP_DATA.aiid,
+      [{ piid: PROP.MAP_EXTEND_DATA.piid, value: payload }],
+    );
+
+    this._selectedMapId = String(mapId);
+    this.setStoreValue('selectedMapId', this._selectedMapId).catch(this.error);
+    // Sync fallback rooms from newly selected floor
+    if (this._savedMaps[this._selectedMapId]) {
+      this._roomsFallback = this._savedMaps[this._selectedMapId].rooms || [];
+      this.setStoreValue('rooms', this._roomsFallback).catch(this.error);
+    }
+    this._updateCurrentFloorCapability();
+    this._diag(`[MAP] Floor selected: mapId=${mapId}`, null, 'debug');
+
+    this.homey.setTimeout(async () => {
+      try { await this._requestMapViaMqtt(); } catch (e) {
+        this._diag(`[MAP] Map re-request after floor switch failed: ${e.message}`, null, 'warning');
+      }
+    }, 2000);
+  }
+
+  /**
+   * Extract floor info from the map data JSON.
+   * The outer map's JSON has 'curid' (current map ID) and when multi-floor is
+   * enabled, we can track which floor is active. The full map list comes via
+   * MQTT prop 6-8, but as a fallback we build a minimal floor list from what we know.
+   */
+  _extractFloorInfoFromMap(mapStr, mapKey, modelIv) {
+    try {
+      let data = mapStr;
+      if (mapStr.includes(',')) data = mapStr.split(',')[0];
+      let buf = Buffer.from(data.replace(/_/g, '/').replace(/-/g, '+'), 'base64');
+
+      // Decrypt if needed
+      if (mapKey && modelIv) {
+        try {
+          const keyHash = crypto.createHash('sha256').update(mapKey).digest('hex').slice(0, 32);
+          const decipher = crypto.createDecipheriv('aes-256-cbc', Buffer.from(keyHash, 'utf8'), Buffer.from(modelIv, 'utf8'));
+          decipher.setAutoPadding(true);
+          buf = Buffer.concat([decipher.update(buf), decipher.final()]);
+        } catch { /* not encrypted */ }
+      }
+      try { buf = zlib.inflateSync(buf); } catch { return; }
+      if (buf.length < MAP_HEADER_SIZE) return;
+
+      const width = buf.readInt16LE(19);
+      const height = buf.readInt16LE(21);
+      const imageSize = MAP_HEADER_SIZE + (width * height);
+      if (buf.length <= imageSize) return;
+
+      const json = JSON.parse(buf.slice(imageSize).toString('utf8'));
+      const curid = json.curid;
+
+      if (curid != null) {
+        this._selectedMapId = String(curid);
+        this.setStoreValue('selectedMapId', this._selectedMapId).catch(this.error);
+      }
+    } catch { /* ignore parse errors */ }
+  }
 
   _getLanguage() {
     try {
@@ -2453,7 +2916,7 @@ class DreameVacuumDevice extends Homey.Device {
       const segId = pixel & 0x3F;
       if (segId > 0 && segId < 61 && segId !== this._robotCurrentRoomId) {
         this._robotCurrentRoomId = segId;
-        const room = (this._rooms || []).find(r => r.id === segId);
+        const room = this.getRooms().find(r => r.id === segId);
         const name = room ? room.name : `Room ${segId}`;
         this.setCapabilityValue('dreame_current_room', name).catch(this.error);
       }
@@ -2482,8 +2945,8 @@ class DreameVacuumDevice extends Homey.Device {
       // Include current room info
       const roomId = this._robotCurrentRoomId;
       let roomName = null;
-      if (roomId && this._rooms) {
-        const room = this._rooms.find(r => r.id === roomId);
+      if (roomId) {
+        const room = this.getRooms().find(r => r.id === roomId);
         if (room) roomName = room.name;
       }
       return { x: px, y: py, roomId, roomName };
@@ -2571,8 +3034,9 @@ class DreameVacuumDevice extends Homey.Device {
   _fireRoomStartedTriggers(roomIds) {
     const triggerCard = this.homey.flow.getDeviceTriggerCard('room_cleaning_started');
     const triggerByIdCard = this.homey.flow.getDeviceTriggerCard('room_cleaning_started_by_id');
+    const rooms = this.getRooms();
     for (const roomId of roomIds) {
-      const room = this._rooms.find(r => r.id === roomId);
+      const room = rooms.find(r => r.id === roomId);
       const roomName = room ? room.name : `Room ${roomId}`;
       const tokens = { room_name: roomName, room_id: String(roomId) };
       const state = { room_id: roomId };
@@ -2586,8 +3050,9 @@ class DreameVacuumDevice extends Homey.Device {
   _fireRoomFinishedTriggers() {
     const triggerCard = this.homey.flow.getDeviceTriggerCard('room_cleaning_finished');
     const triggerByIdCard = this.homey.flow.getDeviceTriggerCard('room_cleaning_finished_by_id');
+    const rooms = this.getRooms();
     for (const roomId of this._cleaningRoomIds) {
-      const room = this._rooms.find(r => r.id === roomId);
+      const room = rooms.find(r => r.id === roomId);
       const roomName = room ? room.name : `Room ${roomId}`;
       const tokens = { room_name: roomName, room_id: String(roomId) };
       const state = { room_id: roomId };
@@ -3092,11 +3557,14 @@ async deleteZone(zoneId) {
       this.homey.clearTimeout(this._mapResponseTimeout);
       this._mapResponseTimeout = null;
     }
-    // Only remove our listeners — don't disconnect the shared MQTT singleton
-    // (other devices may still be using it; app.onUninit() handles disconnect)
+    // Unregister from shared MQTT (unsubscribes our topic, disconnects if last device)
     this._removeMqttListeners();
+    const mqttClient = this.homey.app.getMqtt();
+    mqttClient.unregister(this._did);
   }
 
 }
 
 module.exports = DreameVacuumDevice;
+module.exports.parseMapRooms = parseMapRooms;
+module.exports.getMapIvForModel = getMapIvForModel;
