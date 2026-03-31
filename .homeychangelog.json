@@ -1,4 +1,7 @@
 {
+  "0.0.40": {
+    "en": "Add mopping type (scrub mode) setting\n- New capability: Mopping Type (Standard / Deep / Quick) — controls mop pad scrubbing intensity\n- Flow action card: Set mopping type\n- Probeable: auto-removed on devices that don't support it\n- Credit: SIID/PIID reference from community contributor @pablito8410 (PR #32)"
+  },
   "0.0.1": {
     "en": "Initial release\n- Control robot vacuums via Dreame Home cloud API\n- Cleaning modes: Sweeping, Mopping, Sweeping & Mopping\n- Suction level, water volume, and cleaning route control\n- CleanGenius intelligent cleaning with auto-start\n- Dock features: Auto Empty, Self Clean, Drying\n- Consumable monitoring with low alerts\n- Battery, cleaned area, cleaning time sensors\n- Flow cards for automations\n- Configurable polling interval"
   },

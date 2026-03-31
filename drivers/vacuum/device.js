@@ -14,6 +14,7 @@ const PROP = {
   SUCTION_LEVEL:  { siid: 4, piid: 4 },
   WATER_VOLUME:   { siid: 4, piid: 5 },
   CLEANING_MODE:  { siid: 4, piid: 23 },
+  MOPPING_TYPE:   { siid: 2, piid: 8 },
 
   // Consumables
   MAIN_BRUSH_LEFT:  { siid: 9, piid: 2 },
@@ -213,6 +214,10 @@ const WATER_TEMP_REVERSE = { 0: 'normal', 1: 'mild', 2: 'warm', 3: 'hot', 4: 'ma
 const AUTO_EMPTY_FREQ_MAP = { standard: 0, high: 1, low: 2, intelligent: 4 };
 const AUTO_EMPTY_FREQ_REVERSE = { 0: 'standard', 1: 'high', 2: 'low', 4: 'intelligent' };
 
+// Mopping type (scrub mode)
+const MOPPING_TYPE_MAP = { standard: 0, deep: 1, quick: 2 };
+const MOPPING_TYPE_REVERSE = { 0: 'standard', 1: 'deep', 2: 'quick' };
+
 // Mop pressure
 const MOP_PRESSURE_MAP = { light: 0, normal: 1 };
 const MOP_PRESSURE_REVERSE = { 0: 'light', 1: 'normal' };
@@ -266,6 +271,7 @@ const PROP_TO_CAPABILITY = {
   '7-1': 'dreame_volume',
   '28-8': 'dreame_water_temperature',
   '15-2': 'dreame_auto_empty_frequency',
+  '2-8': 'dreame_mopping_type',
   '28-86': 'dreame_mop_pressure',
   '3-2': 'dreame_charging_status',
   '4-64': 'dreame_drying_progress',
@@ -803,7 +809,7 @@ class DreameVacuumDevice extends Homey.Device {
     const probeableCapabilities = [
       'dreame_child_lock', 'dreame_resume_cleaning', 'dreame_tight_mopping',
       'dreame_silent_drying', 'dreame_carpet_sensitivity', 'dreame_carpet_cleaning',
-      'dreame_mop_wash_level', 'dreame_drying_time', 'dreame_volume',
+      'dreame_mopping_type', 'dreame_mop_wash_level', 'dreame_drying_time', 'dreame_volume',
       'dreame_water_temperature', 'dreame_auto_empty_frequency', 'dreame_mop_pressure',
       'dreame_charging_status', 'dreame_drying_progress', 'dreame_drainage_status',
       'dreame_detergent_status', 'dreame_hot_water_status', 'dreame_dock_cleaning_status',
@@ -822,12 +828,12 @@ class DreameVacuumDevice extends Homey.Device {
     // Probe-once: detect which advanced properties the device supports
     // Re-probe when new probeable props are added (version bump resets probe)
     const probeVersion = this.getStoreValue('probeVersion') || 0;
-    if (probeVersion < 4) { // v4: improved mopPadLifting detection
+    if (probeVersion < 5) { // v5: add mopping type (scrub mode)
       // Keep previously discovered unsupported props to avoid re-adding + removing capabilities
       // which causes transient UI crashes in the Homey mobile app
       this._unsupportedProps = new Set(this.getStoreValue('unsupportedProps') || []);
       this._probeComplete = false;
-      await this.setStoreValue('probeVersion', 4);
+      await this.setStoreValue('probeVersion', 5);
       await this.setStoreValue('probeComplete', false);
     } else {
       this._unsupportedProps = new Set(this.getStoreValue('unsupportedProps') || []);
@@ -870,6 +876,9 @@ class DreameVacuumDevice extends Homey.Device {
     }
     if (this.hasCapability('dreame_carpet_cleaning')) {
       this.registerCapabilityListener('dreame_carpet_cleaning', this._onCarpetCleaning.bind(this));
+    }
+    if (this.hasCapability('dreame_mopping_type')) {
+      this.registerCapabilityListener('dreame_mopping_type', this._onMoppingType.bind(this));
     }
     if (this.hasCapability('dreame_mop_wash_level')) {
       this.registerCapabilityListener('dreame_mop_wash_level', this._onMopWashLevel.bind(this));
@@ -1727,6 +1736,12 @@ class DreameVacuumDevice extends Homey.Device {
         }
         break;
 
+      case '2-8': // MOPPING_TYPE
+        if (MOPPING_TYPE_REVERSE[value] !== undefined) {
+          await this.setCapabilityValue('dreame_mopping_type', MOPPING_TYPE_REVERSE[value]).catch(this.error);
+        }
+        break;
+
       case '4-46': // MOP_WASH_LEVEL
         if (MOP_WASH_LEVEL_REVERSE[value] !== undefined) {
           await this.setCapabilityValue('dreame_mop_wash_level', MOP_WASH_LEVEL_REVERSE[value]).catch(this.error);
@@ -1956,7 +1971,7 @@ class DreameVacuumDevice extends Homey.Device {
       // Probeable toggle/enum/status properties (polled every cycle)
       const probeableEvery = [
         PROP.CHILD_LOCK, PROP.RESUME_CLEANING, PROP.TIGHT_MOPPING, PROP.SILENT_DRYING,
-        PROP.CARPET_SENSITIVITY, PROP.CARPET_CLEANING, PROP.MOP_WASH_LEVEL,
+        PROP.CARPET_SENSITIVITY, PROP.CARPET_CLEANING, PROP.MOPPING_TYPE, PROP.MOP_WASH_LEVEL,
         PROP.DRYING_TIME, PROP.VOLUME, PROP.WATER_TEMPERATURE,
         PROP.AUTO_EMPTY_FREQUENCY, PROP.MOP_PRESSURE,
         PROP.CHARGING_STATUS, PROP.DRYING_PROGRESS, PROP.DRAINAGE_STATUS,
@@ -2719,6 +2734,11 @@ class DreameVacuumDevice extends Homey.Device {
     this._forceRefresh();
   }
 
+  async _onMoppingType(value) {
+    await this.setMoppingType(value);
+    this._forceRefresh();
+  }
+
   async _onMopPressure(value) {
     await this.setMopPressure(value);
     this._forceRefresh();
@@ -2746,6 +2766,17 @@ class DreameVacuumDevice extends Homey.Device {
       { siid: PROP.CARPET_CLEANING.siid, piid: PROP.CARPET_CLEANING.piid, value },
     ]);
     await this.setCapabilityValue('dreame_carpet_cleaning', mode);
+  }
+
+  async setMoppingType(type) {
+    this._lastCommandTime = Date.now();
+    const api = this._getApi();
+    const value = MOPPING_TYPE_MAP[type];
+    if (value === undefined) throw new Error(`Invalid mopping type: ${type}`);
+    await api.setProperties(this._did, this._bindDomain, [
+      { siid: PROP.MOPPING_TYPE.siid, piid: PROP.MOPPING_TYPE.piid, value },
+    ]);
+    await this.setCapabilityValue('dreame_mopping_type', type);
   }
 
   async setMopWashLevel(level) {

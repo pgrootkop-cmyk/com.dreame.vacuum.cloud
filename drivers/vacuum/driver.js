@@ -22,6 +22,11 @@ class DreameVacuumDriver extends Homey.Driver {
         await args.device.setWaterVolume(args.volume);
       });
 
+    this.homey.flow.getActionCard('set_dreame_mopping_type')
+      .registerRunListener(async (args) => {
+        await args.device.setMoppingType(args.mopping_type);
+      });
+
     this.homey.flow.getActionCard('vacuum_locate')
       .registerRunListener(async (args) => {
         await args.device.locate();

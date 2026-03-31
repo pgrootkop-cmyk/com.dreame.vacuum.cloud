@@ -1,0 +1,12 @@
+{
+  "type": "enum",
+  "title": { "en": "Mopping Type" },
+  "getable": true,
+  "setable": true,
+  "uiComponent": "picker",
+  "values": [
+    { "id": "standard", "title": { "en": "Standard" } },
+    { "id": "deep", "title": { "en": "Deep" } },
+    { "id": "quick", "title": { "en": "Quick" } }
+  ]
+}

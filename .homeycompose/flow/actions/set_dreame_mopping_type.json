@@ -1,0 +1,45 @@
+{
+  "title": {
+    "en": "Set mopping type"
+  },
+  "titleFormatted": {
+    "en": "Set mopping type to [[mopping_type]]"
+  },
+  "hint": {
+    "en": "Change the mop scrubbing mode (standard, deep, or quick)"
+  },
+  "args": [
+    {
+      "name": "device",
+      "type": "device",
+      "filter": "driver_id=vacuum"
+    },
+    {
+      "type": "dropdown",
+      "name": "mopping_type",
+      "title": {
+        "en": "Mopping type"
+      },
+      "values": [
+        {
+          "id": "standard",
+          "title": {
+            "en": "Standard"
+          }
+        },
+        {
+          "id": "deep",
+          "title": {
+            "en": "Deep"
+          }
+        },
+        {
+          "id": "quick",
+          "title": {
+            "en": "Quick"
+          }
+        }
+      ]
+    }
+  ]
+}

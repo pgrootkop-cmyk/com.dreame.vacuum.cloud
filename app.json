@@ -1,7 +1,7 @@
 {
   "_comment": "This file is generated. Please edit .homeycompose/app.json instead.",
   "id": "com.dreame.vacuum.cloud",
-  "version": "0.0.39",
+  "version": "0.0.40",
   "compatibility": ">=12.3.0",
   "sdk": 3,
   "platforms": [
@@ -1959,6 +1959,52 @@
       },
       {
         "title": {
+          "en": "Set mopping type"
+        },
+        "titleFormatted": {
+          "en": "Set mopping type to [[mopping_type]]"
+        },
+        "hint": {
+          "en": "Change the mop scrubbing mode (standard, deep, or quick)"
+        },
+        "args": [
+          {
+            "name": "device",
+            "type": "device",
+            "filter": "driver_id=vacuum"
+          },
+          {
+            "type": "dropdown",
+            "name": "mopping_type",
+            "title": {
+              "en": "Mopping type"
+            },
+            "values": [
+              {
+                "id": "standard",
+                "title": {
+                  "en": "Standard"
+                }
+              },
+              {
+                "id": "deep",
+                "title": {
+                  "en": "Deep"
+                }
+              },
+              {
+                "id": "quick",
+                "title": {
+                  "en": "Quick"
+                }
+              }
+            ]
+          }
+        ],
+        "id": "set_dreame_mopping_type"
+      },
+      {
+        "title": {
           "en": "Set suction level"
         },
         "titleFormatted": {
@@ -3059,6 +3105,7 @@
         "dreame_silent_drying",
         "dreame_carpet_sensitivity",
         "dreame_carpet_cleaning",
+        "dreame_mopping_type",
         "dreame_mop_wash_level",
         "dreame_drying_time",
         "dreame_volume",
@@ -3995,6 +4042,35 @@
           "id": "water_saving",
           "title": {
             "en": "Water Saving"
+          }
+        }
+      ]
+    },
+    "dreame_mopping_type": {
+      "type": "enum",
+      "title": {
+        "en": "Mopping Type"
+      },
+      "getable": true,
+      "setable": true,
+      "uiComponent": "picker",
+      "values": [
+        {
+          "id": "standard",
+          "title": {
+            "en": "Standard"
+          }
+        },
+        {
+          "id": "deep",
+          "title": {
+            "en": "Deep"
+          }
+        },
+        {
+          "id": "quick",
+          "title": {
+            "en": "Quick"
           }
         }
       ]
