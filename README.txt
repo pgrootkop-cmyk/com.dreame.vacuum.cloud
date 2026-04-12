@@ -59,7 +59,7 @@ Homey excels at automations (Flow cards), device control, and status monitoring.
 Found a bug or have a feature request? Open an issue at https://github.com/pgrootkop-cmyk/com.dreame.vacuum.cloud/issues and include:
 1. Your exact vacuum model (e.g. Dreame X40 Ultra, L20 Ultra, L10 Pro)
 2. A description of the problem — what happened and what you expected
-3. Diagnostic logs — run `homey app run --remote` to see real-time logs for debugging
+3. Send a diagnostic report — in the Homey app, go to More > Apps > Dreame, tap the menu icon in the top right, and select Send diagnostic report
 
 **Supported Devices**
 Works with Dreame robot vacuums controllable via the Dreame Home app, including the X40, X30, L20, L10, and other models.

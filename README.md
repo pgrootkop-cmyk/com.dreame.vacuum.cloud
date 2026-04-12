@@ -94,7 +94,7 @@ Found a bug or have a feature request? Please open an [issue](https://github.com
 
 1. **Your exact vacuum model** (e.g. Dreame X40 Ultra, L20 Ultra, L10 Pro)
 2. **A description of the problem** — what happened and what you expected
-3. **Diagnostic logs** — run `homey app run --remote` to see real-time logs for debugging
+3. **Send a diagnostic report** — in the Homey app, go to **More → Apps → Dreame**, tap the **menu icon (⋮)** in the top right, and select **Send diagnostic report**. This sends recent app logs directly to the developer.
 
 ## Roadmap
 
