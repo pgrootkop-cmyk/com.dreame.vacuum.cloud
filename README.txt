@@ -27,17 +27,20 @@ We recommend using a separate Dreame Home account for Homey to avoid potential s
 - Consumable Monitoring: Main Brush, Side Brush, Filter, Mop Pad, Sensor (with reset via flow cards)
 - Real-time MQTT: Persistent connection to Dreame cloud for instant state updates and room discovery. All 35+ properties pushed via MQTT
 - Adaptive Polling: 60s idle / 15s cleaning with MQTT, 5s fallback without. Automatic health monitoring
-- Room Cleaning: Single room or multi-room with autocomplete or manual room ID entry, per-room suction/water/repeats, per-room trigger cards
+- Multi-floor: Automatic detection, per-floor rooms/zones/waypoints, floor selector in settings, floor-aware flow cards
+- Room Cleaning: Single room or multi-room with autocomplete or manual room ID entry, per-room suction/water/repeats/mode, per-room trigger cards
+- Waypoint Navigation: Place waypoints on the map, navigate via flow cards
 - Live Tracking: Real-time robot position on map widget and settings page during cleaning (~5s updates)
 - Current Room: Shows which room the robot is in — live during cleaning, dock room when charging
 - Dashboard Widget: Vacuum map with room colors, labels, robot & charger position, status bar
 - Consumables Widget: Dashboard widget with color-coded health bars for brush, filter, mop pad, sensor
-- App Settings: Device overview with rendered map, status grid, room list, consumable health bars
+- Mopping Type: Standard, Deep, Quick scrubbing intensity
+- App Settings: Device overview with rendered map, floor selector, zone/waypoint editor, status grid, per-floor room list, consumable health bars
 - Carpet: Boost toggle, Sensitivity (Low/Medium/High), Cleaning mode (Avoidance/Adaptation/Remove Mop/Vacuum & Mop/Ignore)
 - Dock Settings: Mop Wash Level, Water Temperature, Auto Empty Frequency, Mop Pressure, Drying Time, Volume
 - Toggles: Child Lock, Resume Cleaning, Tight Mopping, Silent Drying, DND
 - Status: Battery, Cleaned Area, Cleaning Time, Total Cleaned Area, Error, Current Room, Charging, Dock Cleaning, Drying Progress, Drainage, Detergent, Hot Water, Water Tank, Dirty Water Tank, Dust Bag, Dust Collection
-- Flow Cards: 31 actions, 17 conditions, 7 triggers
+- Flow Cards: 38 actions, 19 conditions, 19 triggers
 
 **Not Supported**
 Some features from the Dreame Home app or Tasshack/dreame-vacuum (Home Assistant) cannot be implemented on Homey:
@@ -56,7 +59,7 @@ Homey excels at automations (Flow cards), device control, and status monitoring.
 Found a bug or have a feature request? Open an issue at https://github.com/pgrootkop-cmyk/com.dreame.vacuum.cloud/issues and include:
 1. Your exact vacuum model (e.g. Dreame X40 Ultra, L20 Ultra, L10 Pro)
 2. A description of the problem — what happened and what you expected
-3. Enable diagnostic logging — go to the app settings in Homey, enable Diagnostic Logging, and reproduce the issue. This sends anonymous logs to the developer to help debug your problem. You can disable it again afterwards.
+3. Diagnostic logs — run `homey app run --remote` to see real-time logs for debugging
 
 **Supported Devices**
 Works with Dreame robot vacuums controllable via the Dreame Home app, including the X40, X30, L20, L10, and other models.

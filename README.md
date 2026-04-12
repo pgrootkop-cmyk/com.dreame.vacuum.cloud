@@ -44,22 +44,25 @@ If you signed up using Google, Apple, or another third-party login, you need to 
 | **Dock Features** | Auto Empty, Self Clean, Drying, Draining |
 | **Consumables** | Main Brush, Side Brush, Filter, Mop Pad, Sensor (with reset) |
 | **Sensors** | Battery, Cleaned Area, Cleaning Time, Total Cleaned Area, Error Status, Current Room |
-| **Room Cleaning** | Room discovery via MQTT + cloud map download. Single/multi-room cleaning with autocomplete selection or manual room ID entry, per-room suction/water/repeats. Simple room cleaning cards that use the vacuum's current settings. Per-room trigger cards (start/finish) |
+| **Multi-floor** | Automatic detection of multi-floor capability. Per-floor rooms, zones, and waypoints. Floor selector in app settings. Floor-aware flow cards with auto-switch. Single-floor devices are unaffected |
+| **Room Cleaning** | Room discovery via MQTT + cloud map download. Single/multi-room cleaning with autocomplete selection or manual room ID entry, per-room suction/water/repeats/mode. Simple room cleaning cards that use the vacuum's current settings. Per-room trigger cards (start/finish) |
 | **Zone Cleaning** | Draw custom zones on the map in app settings. Clean zones via flow cards with configurable repeats. Zone cleaning finished trigger with optional zone name filter |
+| **Waypoint Navigation** | Place waypoints on the map in app settings. Navigate the robot to any point via flow cards |
 | **Dreame Shortcuts** | Run shortcuts configured in the Dreame Home app directly from Homey flow cards |
 | **Cleaning Finished** | Trigger fires when the vacuum finishes cleaning and returns to the dock. Works with zone cleaning too |
 | **Live Tracking** | Real-time robot position on map widget and settings page during cleaning (~5s updates) |
 | **Current Room** | Shows which room the robot is in — live during cleaning, dock room when charging |
 | **Dashboard Widget** | Live vacuum map with 5 color schemes (Dreame Light/Dark, Mijia Light/Dark, Grayscale), configurable label sizes, robot & charger position |
 | **Consumables Widget** | Dashboard widget with color-coded health bars for Main Brush, Side Brush, Filter, Mop Pad, and Sensor |
-| **App Settings** | Device overview with rendered map, zone editor, status grid, room list, and consumable health bars |
+| **App Settings** | Device overview with rendered map, zone/waypoint editor, floor selector, status grid (incl. CleanGenius & multi-floor status), per-floor room list, and consumable health bars |
 | **Carpet** | Carpet Boost toggle, Carpet Sensitivity (Low/Medium/High), Carpet Cleaning mode (Avoidance/Adaptation/Remove Mop/Vacuum & Mop/Ignore) |
 | **Dock Settings** | Mop Wash Level, Water Temperature, Auto Empty Frequency, Mop Pressure, Drying Time, Volume |
 | **Toggles** | Child Lock, Resume Cleaning, Tight Mopping, Silent Drying, DND |
 | **Status** | Charging Status, Dock Cleaning Status, Drying Progress, Drainage Status, Detergent Status, Hot Water Status, Water Tank, Dirty Water Tank, Dust Bag, Dust Collection |
 | **Real-time MQTT** | Persistent connection to Dreame MQTT broker for instant property updates and room discovery. All 35+ properties pushed via MQTT — ~80% fewer API calls |
 | **Adaptive Polling** | Automatic poll interval adjustment: 60s idle / 15s cleaning with MQTT, 5s fallback without. MQTT health monitoring with automatic fast-poll recovery |
-| **Flow Cards** | 31 action cards, 23 condition cards, 14 trigger cards |
+| **Mopping Type** | Standard, Deep, Quick — controls mop pad scrubbing intensity |
+| **Flow Cards** | 38 action cards, 19 condition cards, 19 trigger cards |
 
 ## Not Supported
 
@@ -91,15 +94,13 @@ Found a bug or have a feature request? Please open an [issue](https://github.com
 
 1. **Your exact vacuum model** (e.g. Dreame X40 Ultra, L20 Ultra, L10 Pro)
 2. **A description of the problem** — what happened and what you expected
-3. **Enable diagnostic logging** — go to the app settings in Homey, enable **Diagnostic Logging**, and reproduce the issue. This sends anonymous logs to the developer to help debug your problem. You can disable it again afterwards.
+3. **Diagnostic logs** — run `homey app run --remote` to see real-time logs for debugging
 
 ## Roadmap
 
 Features under consideration for future releases:
 
-- **Multi-floor support** — previously available in test versions but removed due to stability issues. We plan to re-implement it with a more robust architecture.
 - **Map rotation** — rotate the map view in settings and widgets.
-- **Go-to-point** — send the robot to a specific location without cleaning.
 
 No timeline or guarantees — these depend on demand and Homey platform capabilities.
 
