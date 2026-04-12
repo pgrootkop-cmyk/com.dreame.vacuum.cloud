@@ -1,0 +1,27 @@
+{
+  "title": {
+    "en": "Cleaning time changed"
+  },
+  "hint": {
+    "en": "Triggers when the cleaning time (in seconds) changes."
+  },
+  "tokens": [
+    {
+      "name": "time",
+      "type": "number",
+      "title": {
+        "en": "Time (seconds)"
+      },
+      "example": {
+        "en": "120"
+      }
+    }
+  ],
+  "args": [
+    {
+      "name": "device",
+      "type": "device",
+      "filter": "driver_id=vacuum"
+    }
+  ]
+}

@@ -309,6 +309,13 @@ class DreameVacuumDriver extends Homey.Driver {
 
     // --- Dust bin full trigger (no args to filter) ---
 
+    // --- Dock state changed trigger ---
+    const dockStateChangedCard = this.homey.flow.getDeviceTriggerCard('dock_state_changed');
+    dockStateChangedCard.registerRunListener(async (args, state) => {
+      if (args.state === 'any') return true;
+      return state.state === args.state;
+    });
+
     // --- Water tank changed trigger ---
     const waterTankChangedCard = this.homey.flow.getDeviceTriggerCard('water_tank_changed');
     waterTankChangedCard.registerRunListener(async (args, state) => {

@@ -1,0 +1,40 @@
+{
+  "title": {
+    "en": "The dock state changed to ..."
+  },
+  "titleFormatted": {
+    "en": "The dock state changed to [[state]]"
+  },
+  "hint": {
+    "en": "Triggers when the dock cleaning/drying state changes."
+  },
+  "tokens": [
+    {
+      "name": "state",
+      "type": "string",
+      "title": {
+        "en": "State"
+      },
+      "example": {
+        "en": "Drying"
+      }
+    }
+  ],
+  "args": [
+    {
+      "name": "device",
+      "type": "device",
+      "filter": "driver_id=vacuum"
+    },
+    {
+      "name": "state",
+      "type": "dropdown",
+      "values": [
+        { "id": "any", "title": { "en": "Any state" } },
+        { "id": "idle", "title": { "en": "Idle" } },
+        { "id": "cleaning", "title": { "en": "Cleaning" } },
+        { "id": "drying", "title": { "en": "Drying" } }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,27 @@
+{
+  "title": {
+    "en": "Cleaning progress changed"
+  },
+  "hint": {
+    "en": "Triggers when the cleaning progress percentage changes."
+  },
+  "tokens": [
+    {
+      "name": "progress",
+      "type": "number",
+      "title": {
+        "en": "Progress (%)"
+      },
+      "example": {
+        "en": "42"
+      }
+    }
+  ],
+  "args": [
+    {
+      "name": "device",
+      "type": "device",
+      "filter": "driver_id=vacuum"
+    }
+  ]
+}

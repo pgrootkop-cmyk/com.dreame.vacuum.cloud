@@ -1,0 +1,27 @@
+{
+  "title": {
+    "en": "Drying progress changed"
+  },
+  "hint": {
+    "en": "Triggers when the mop drying progress percentage changes."
+  },
+  "tokens": [
+    {
+      "name": "progress",
+      "type": "number",
+      "title": {
+        "en": "Progress (%)"
+      },
+      "example": {
+        "en": "75"
+      }
+    }
+  ],
+  "args": [
+    {
+      "name": "device",
+      "type": "device",
+      "filter": "driver_id=vacuum"
+    }
+  ]
+}

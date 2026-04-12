@@ -1500,6 +1500,8 @@ class DreameVacuumDevice extends Homey.Device {
 
       case '4-2': // CLEANING_TIME
         await this.setCapabilityValue('dreame_cleaning_time', value).catch(this.error);
+        this.homey.flow.getDeviceTriggerCard('cleaning_time_changed')
+          .trigger(this, { time: value || 0 }).catch(e => this.error('Cleaning time trigger:', e));
         break;
 
       case '4-3': // CLEANED_AREA
@@ -1581,6 +1583,8 @@ class DreameVacuumDevice extends Homey.Device {
 
       case '4-63': // CLEANING_PROGRESS
         await this.setCapabilityValue('dreame_cleaning_progress', value || 0).catch(this.error);
+        this.homey.flow.getDeviceTriggerCard('cleaning_progress_changed')
+          .trigger(this, { progress: value || 0 }).catch(e => this.error('Cleaning progress trigger:', e));
         break;
 
       case '4-12': // CARPET_BOOST
@@ -1797,6 +1801,8 @@ class DreameVacuumDevice extends Homey.Device {
 
       case '4-64': // DRYING_PROGRESS
         await this.setCapabilityValue('dreame_drying_progress', value || 0).catch(this.error);
+        this.homey.flow.getDeviceTriggerCard('drying_progress_changed')
+          .trigger(this, { progress: value || 0 }).catch(e => this.error('Drying progress trigger:', e));
         break;
 
       case '4-60': // DRAINAGE_STATUS
@@ -1819,7 +1825,11 @@ class DreameVacuumDevice extends Homey.Device {
 
       case '4-61': // DOCK_CLEANING_STATUS
         if (DOCK_CLEANING_STATUS_MAP[value] !== undefined) {
-          await this.setCapabilityValue('dreame_dock_cleaning_status', DOCK_CLEANING_STATUS_MAP[value]).catch(this.error);
+          const dockState = DOCK_CLEANING_STATUS_MAP[value];
+          await this.setCapabilityValue('dreame_dock_cleaning_status', dockState).catch(this.error);
+          const dockLabel = dockState.charAt(0).toUpperCase() + dockState.slice(1);
+          this.homey.flow.getDeviceTriggerCard('dock_state_changed')
+            .trigger(this, { state: dockLabel }, { state: dockState }).catch(e => this.error('Dock state trigger:', e));
         }
         break;
 
