@@ -442,7 +442,7 @@ const COMMAND_DEBOUNCE_MS = 10000;
 
 // Adaptive polling intervals (ms)
 const POLL_FAST = 5000;        // MQTT disconnected (fallback)
-const POLL_ACTIVE = 15000;     // MQTT connected + cleaning (backup)
+const POLL_ACTIVE = 30000;     // MQTT connected + cleaning (backup, cloud cache)
 const POLL_IDLE = 60000;       // MQTT connected + idle (safety net)
 const MQTT_STALE_MS = 120000;  // If no MQTT message for 2min during cleaning, fall back to fast poll
 const MAP_REFRESH_INTERVAL = 600000; // 10min — periodic map refresh via HTTP when MQTT is down
@@ -1224,6 +1224,13 @@ class DreameVacuumDevice extends Homey.Device {
    */
   async _refreshMapViaHttp() {
     try {
+      // Skip while cleaning to avoid sending relay commands to busy device
+      const currentState = this.getCapabilityValue('vacuumcleaner_state');
+      if (currentState === 'cleaning') {
+        this._diag('[MAP] HTTP fallback: skipping — device is cleaning', null, 'debug');
+        return;
+      }
+
       const api = this.homey.app.getApi();
       if (!api) return;
 
@@ -1255,6 +1262,14 @@ class DreameVacuumDevice extends Homey.Device {
    */
   async _requestMapViaMqtt() {
     try {
+      // Skip map request while device is actively cleaning — the ACTION 6-1
+      // relay command can interfere with cleaning on some models (e.g. X50 Ultra).
+      // Map updates still arrive via MQTT P-frames during cleaning.
+      const currentState = this.getCapabilityValue('vacuumcleaner_state');
+      if (currentState === 'cleaning') {
+        this._diag('[MAP] Skipping map request — device is cleaning', null, 'debug');
+        return;
+      }
       const mqttClient = this.homey.app.getMqtt();
       if (!mqttClient || !mqttClient.connected) {
         this._diag('[MAP] Skipping map request — MQTT not connected', null, 'debug');
@@ -2011,7 +2026,10 @@ class DreameVacuumDevice extends Homey.Device {
 
       }
 
-      const results = await api.getProperties(this._did, this._bindDomain, props);
+      // Use cloud-cache endpoint (reads cached state, does NOT relay to device).
+      // This prevents 80001 "device offline" errors and "Manual docking" issues
+      // that occur when relay-based polling interferes with active cleaning.
+      const results = await api.getPropertiesFromCloud(this._did, props);
 
       if (!Array.isArray(results)) {
         this.error('Unexpected poll result:', results);
