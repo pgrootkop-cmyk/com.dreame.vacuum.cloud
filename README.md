@@ -84,6 +84,31 @@ Some features available in the Dreame Home app or in [Tasshack/dreame-vacuum](ht
 
 Should work with any robot vacuum controllable via the [Dreame Home](https://www.dreame.nl/pages/dreame-home) app, including the **X40**, **X30**, **L20**, **L10**, and other models. Currently only tested with the Dreame X40 Ultra.
 
+## Where to Find the Settings
+
+The app has settings in two different places:
+
+- **App settings** (map, zones, waypoints, floor selector, status overview):
+  Homey app → **More (…)** → **Apps** → **Dreame** → **Configure app**.
+  This opens the app settings page with the rendered map, the zone/waypoint editor, the floor selector (multi-floor devices only), and consumable health bars.
+
+- **Device settings** (poll interval, consumable alert threshold, server region, multi-floor management):
+  Homey app → **Devices** → tap your vacuum → **gear icon** (top right) → **Advanced settings**.
+
+## FAQ
+
+**How do I disable (or re-enable) multi-floor management?**
+
+Go to the **device settings** (Devices → your vacuum → gear icon → Advanced settings) and toggle **"Multi-floor management"** under the General group. When disabled, Homey stops managing floors entirely: the floor selector disappears from the app settings page, flow-card autocompletes no longer show floor labels, and the "Switch to floor" card is disabled. Use this if you prefer to manage maps in the Dreame Home app only, or if floor switching causes problems on your model. Re-enabling refreshes the floor list automatically. The toggle only has effect on vacuums that support multiple maps.
+
+**Why don't my rooms/shortcuts show up in flow cards?**
+
+Rooms and shortcuts are discovered from the Dreame cloud shortly after the app starts, while the vacuum is idle. Make sure the vacuum is docked, wait a minute, then re-open the flow card. If the list stays empty, restart the app (More → Apps → Dreame → ⋮ → Restart) and send a diagnostic report if it persists.
+
+**Which region should I pick as an Australian user?**
+
+Dreame has no dedicated Australian server — pick **Australia / Oceania (Singapore server)** when pairing (or **Singapore / Australia** in device settings).
+
 ## Disclaimer
 
 This app is not affiliated with Dreame Technology. The Dreame Home API is reverse-engineered and may change without notice.
