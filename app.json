@@ -1,7 +1,7 @@
 {
   "_comment": "This file is generated. Please edit .homeycompose/app.json instead.",
   "id": "com.dreame.vacuum.cloud",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "compatibility": ">=12.3.0",
   "sdk": 3,
   "platforms": [
@@ -3726,6 +3726,17 @@
                   }
                 }
               ]
+            },
+            {
+              "id": "multi_floor_enabled",
+              "type": "checkbox",
+              "label": {
+                "en": "Multi-floor management"
+              },
+              "value": true,
+              "hint": {
+                "en": "Let Homey manage multiple floors/maps (floor selector, per-floor rooms and flow cards). Disable if you manage maps in the Dreame app only, or if floor switching causes problems. Only applies to vacuums that support multiple maps."
+              }
             }
           ]
         }
