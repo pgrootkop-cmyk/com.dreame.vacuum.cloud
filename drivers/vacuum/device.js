@@ -83,7 +83,7 @@ const PROP = {
   // Map data - cloud requires object name approach, not direct property read
   MAP_DATA: { siid: 6, piid: 1 },
   MAP_OBJECT_NAME: { siid: 6, piid: 2 },
-  MAP_EXTEND_DATA: { siid: 6, piid: 3 },
+  MAP_EXTEND_DATA: { siid: 6, piid: 4 },  // Tasshack: MAP_EXTEND_DATA (piid 3 is OBJECT_NAME — sending map commands there triggers a new mapping run)
   MAP_LIST: { siid: 6, piid: 8 },  // Tasshack: MAP_LIST (saved maps metadata)
   MULTI_FLOOR_MAP: { siid: 6, piid: 7 },  // Boolean read-only: device supports multi-floor
 };
@@ -1423,12 +1423,12 @@ class DreameVacuumDevice extends Homey.Device {
 
     // Multi-floor: extract map_id and persist per-floor metadata (not the raw map)
     let extractedMapId = null;
-    if (this._multiFloor) {
+    if (this.isMultiFloor()) {
       extractedMapId = extractMapId(mapStr, mapKey, modelIv);
     }
     mapStr = null; // free large string for GC
 
-    if (this._multiFloor && extractedMapId != null) {
+    if (this.isMultiFloor() && extractedMapId != null) {
       const mapId = extractedMapId;
       if (mapId != null) {
         this._currentMapId = mapId;
@@ -2051,7 +2051,7 @@ class DreameVacuumDevice extends Homey.Device {
       }
 
       case '6-8': { // MAP_LIST
-        if (!this._multiFloor) break;
+        if (!this.isMultiFloor()) break;
         this._diag(`[FLOOR] MAP_LIST raw value: ${String(value).substring(0, 200)}`, null, 'info');
         try {
           const mapListData = typeof value === 'string' ? JSON.parse(value) : value;
@@ -2190,7 +2190,7 @@ class DreameVacuumDevice extends Homey.Device {
         if (!this._unsupportedProps.has('4-48')) props.push(PROP.QUICK_COMMAND);
 
         // Multi-floor map list (polled infrequently, only when multi-floor enabled)
-        if (this._multiFloor && !this._unsupportedProps.has('6-39')) props.push(PROP.MAP_LIST);
+        if (this.isMultiFloor() && !this._unsupportedProps.has('6-39')) props.push(PROP.MAP_LIST);
 
         // Probeable consumables + dock sensors (skip if known unsupported)
         const probeableInfrequent = [
@@ -3142,6 +3142,8 @@ class DreameVacuumDevice extends Homey.Device {
   // ── Multi-floor support ──
 
   isMultiFloor() {
+    // Device capability AND user setting (forum request: allow disabling multi-floor management)
+    if (this.getSetting('multi_floor_enabled') === false) return false;
     return this._multiFloor || false;
   }
 
@@ -3150,7 +3152,7 @@ class DreameVacuumDevice extends Homey.Device {
   }
 
   getFloorList() {
-    if (!this._multiFloor) return [];
+    if (!this.isMultiFloor()) return [];
     return Object.values(this._floorMaps).map(f => ({ mapId: f.mapId, name: f.name }));
   }
 
@@ -3168,7 +3170,7 @@ class DreameVacuumDevice extends Homey.Device {
   }
 
   async switchFloor(mapId) {
-    if (!this._multiFloor) throw new Error('Multi-floor not supported on this device');
+    if (!this.isMultiFloor()) throw new Error('Multi-floor not supported or disabled on this device');
     if (!this._floorMaps[mapId]) throw new Error(`Floor ${mapId} not found`);
 
     // Send floor switch command (Tasshack: update_map_data({"sm": {}, "mapid": map_id}))
@@ -3586,6 +3588,11 @@ class DreameVacuumDevice extends Homey.Device {
       if (api) {
         api.country = newSettings.country;
       }
+    }
+
+    if (changedKeys.includes('multi_floor_enabled') && newSettings.multi_floor_enabled && this._multiFloor) {
+      // Re-enabled: refresh the map list so floors are up to date
+      this._requestMapViaMqtt().catch(this.error);
     }
   }
 

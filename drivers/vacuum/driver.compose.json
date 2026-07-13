@@ -136,6 +136,13 @@
             { "id": "kr", "label": { "en": "South Korea" } },
             { "id": "eu", "label": { "en": "Europe" } }
           ]
+        },
+        {
+          "id": "multi_floor_enabled",
+          "type": "checkbox",
+          "label": { "en": "Multi-floor management" },
+          "value": true,
+          "hint": { "en": "Let Homey manage multiple floors/maps (floor selector, per-floor rooms and flow cards). Disable if you manage maps in the Dreame app only, or if floor switching causes problems. Only applies to vacuums that support multiple maps." }
         }
       ]
     }
