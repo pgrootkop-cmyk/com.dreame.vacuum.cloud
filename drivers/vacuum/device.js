@@ -2231,13 +2231,19 @@ class DreameVacuumDevice extends Homey.Device {
         }
 
         // Detect mop_pad_lifting: device has combo dock (self-wash base + auto-empty base)
-        // Self-wash: prop 4-25 supported; Auto-empty: prop 15-5 supported
-        // Matches Tasshack types.py: mop_pad_lifting = self_wash_base AND auto_empty_base
+        // Matches Tasshack device.py update_static_properties:
+        // self_wash_base = SELF_WASH_BASE_STATUS (4-25), auto_empty = DUST_COLLECTION (15-3),
+        // plus the r2216 model special case.
+        // Never downgrade an earlier true: the cloud-cache endpoint returns error codes for
+        // cache misses on supported props, so a probe here can misread a combo dock as absent
+        // (that overwrote the runtime grouped-mode detection and re-swapped modes on L20 Ultra).
         const hasSelfWash = !this._unsupportedProps.has('4-25');
-        const hasAutoEmpty = !this._unsupportedProps.has('15-5');
-        this._mopPadLifting = hasSelfWash && hasAutoEmpty;
+        const hasAutoEmpty = !this._unsupportedProps.has('15-3') || !this._unsupportedProps.has('15-5');
+        const model = this.getStoreValue('model') || '';
+        const detected = (hasSelfWash && hasAutoEmpty) || model.includes('r2216');
+        this._mopPadLifting = this._mopPadLifting || detected;
         await this.setStoreValue('mopPadLifting', this._mopPadLifting);
-        this._diag(`[PROBE] mopPadLifting=${this._mopPadLifting} (selfWash=${hasSelfWash}, autoEmpty=${hasAutoEmpty})`);
+        this._diag(`[PROBE] mopPadLifting=${this._mopPadLifting} (selfWash=${hasSelfWash}, autoEmpty=${hasAutoEmpty}, model=${model})`);
 
         // Remove probeable capabilities for unsupported props
         for (const [propKey, capName] of Object.entries(PROP_TO_CAPABILITY)) {
