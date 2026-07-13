@@ -3093,7 +3093,7 @@ class DreameVacuumDevice extends Homey.Device {
 
   // Multi-room cleaning
 
-  async startMultiRoomCleaning(roomIds, repeats, suction, water, { keepCleanGenius = false } = {}) {
+  async startMultiRoomCleaning(roomIds, repeats, suction, water, { mode = null, keepCleanGenius = false } = {}) {
     this._lastCommandTime = Date.now();
     const api = this._getApi();
     const suctionValue = SUCTION_MAP[suction] !== undefined ? SUCTION_MAP[suction] : 1;
@@ -3102,6 +3102,11 @@ class DreameVacuumDevice extends Homey.Device {
 
     // Explicit per-card suction/water: CleanGenius would override them (forum #79/#80)
     if (!keepCleanGenius) await this._disableCleanGeniusIfActive();
+
+    // Set cleaning mode before starting if specified (e.g. vacuum-only room cleaning)
+    if (mode && CLEANING_MODE_MAP[mode] !== undefined) {
+      await this.setCleaningMode(mode);
+    }
 
     const cleanlist = roomIds.map(id => [id, repeatCount, suctionValue, waterValue, 1]);
     const params = JSON.stringify({ selects: cleanlist });

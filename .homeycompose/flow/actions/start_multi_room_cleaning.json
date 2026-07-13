@@ -3,7 +3,7 @@
     "en": "Clean multiple rooms"
   },
   "titleFormatted": {
-    "en": "Clean rooms [[rooms]] at [[suction]] suction, [[water]] water, [[repeats]]x"
+    "en": "Clean rooms [[rooms]] in [[mode]] mode, [[suction]] suction, [[water]] water, [[repeats]]x"
   },
   "hint": {
     "en": "Clean multiple rooms. Select rooms one at a time — each selection adds to the list. Use 'All rooms' to clean everything."
@@ -26,15 +26,74 @@
     },
     {
       "type": "dropdown",
+      "name": "mode",
+      "title": {
+        "en": "Cleaning mode"
+      },
+      "values": [
+        {
+          "id": "current",
+          "title": {
+            "en": "Current setting"
+          }
+        },
+        {
+          "id": "sweeping",
+          "title": {
+            "en": "Sweeping"
+          }
+        },
+        {
+          "id": "mopping",
+          "title": {
+            "en": "Mopping"
+          }
+        },
+        {
+          "id": "sweeping_and_mopping",
+          "title": {
+            "en": "Sweeping & Mopping"
+          }
+        },
+        {
+          "id": "mopping_after_sweeping",
+          "title": {
+            "en": "Vacuum then Mop"
+          }
+        }
+      ]
+    },
+    {
+      "type": "dropdown",
       "name": "suction",
       "title": {
         "en": "Suction"
       },
       "values": [
-        { "id": "quiet", "title": { "en": "Quiet" } },
-        { "id": "standard", "title": { "en": "Standard" } },
-        { "id": "strong", "title": { "en": "Strong" } },
-        { "id": "turbo", "title": { "en": "Turbo" } }
+        {
+          "id": "quiet",
+          "title": {
+            "en": "Quiet"
+          }
+        },
+        {
+          "id": "standard",
+          "title": {
+            "en": "Standard"
+          }
+        },
+        {
+          "id": "strong",
+          "title": {
+            "en": "Strong"
+          }
+        },
+        {
+          "id": "turbo",
+          "title": {
+            "en": "Turbo"
+          }
+        }
       ]
     },
     {
@@ -44,9 +103,24 @@
         "en": "Water Volume"
       },
       "values": [
-        { "id": "low", "title": { "en": "Low" } },
-        { "id": "medium", "title": { "en": "Medium" } },
-        { "id": "high", "title": { "en": "High" } }
+        {
+          "id": "low",
+          "title": {
+            "en": "Low"
+          }
+        },
+        {
+          "id": "medium",
+          "title": {
+            "en": "Medium"
+          }
+        },
+        {
+          "id": "high",
+          "title": {
+            "en": "High"
+          }
+        }
       ]
     },
     {
