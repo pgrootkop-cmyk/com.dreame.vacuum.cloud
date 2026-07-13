@@ -153,6 +153,11 @@ class DreameVacuumDriver extends Homey.Driver {
         return args.device.getCapabilityValue('dreame_dust_bag') === 'full';
       });
 
+    this.homey.flow.getConditionCard('dock_state_is')
+      .registerRunListener(async (args) => {
+        return args.device.getCapabilityValue('dreame_dock_cleaning_status') === args.state;
+      });
+
     // CleanGenius flow cards
     this.homey.flow.getActionCard('set_cleangenius')
       .registerRunListener(async (args) => {

@@ -1,0 +1,27 @@
+{
+  "title": {
+    "en": "Dock state !{{is|isn't}} ..."
+  },
+  "titleFormatted": {
+    "en": "Dock state !{{is|isn't}} [[state]]"
+  },
+  "hint": {
+    "en": "Checks the current dock cleaning/drying state."
+  },
+  "args": [
+    {
+      "name": "device",
+      "type": "device",
+      "filter": "driver_id=vacuum"
+    },
+    {
+      "name": "state",
+      "type": "dropdown",
+      "values": [
+        { "id": "idle", "title": { "en": "Idle" } },
+        { "id": "cleaning", "title": { "en": "Cleaning" } },
+        { "id": "drying", "title": { "en": "Drying" } }
+      ]
+    }
+  ]
+}
