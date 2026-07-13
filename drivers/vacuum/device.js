@@ -3522,9 +3522,20 @@ class DreameVacuumDevice extends Homey.Device {
   async startDraining() {
     this._lastCommandTime = Date.now();
     const api = this._getApi();
+    // Tasshack start_self_wash_base("7,1"): parameter goes in CLEANING_PROPERTIES (4-10)
     await api.callAction(this._did, this._bindDomain, ACTION.START_WASHING.siid, ACTION.START_WASHING.aiid, [
-      { piid: 1, value: '7,1' },
+      { piid: 10, value: '7,1' },
     ]);
+  }
+
+  async startStationCleaning() {
+    this._lastCommandTime = Date.now();
+    const api = this._getApi();
+    // Tasshack start_station_cleaning → start_self_wash_base("5,1"): cleans the dock wash board
+    await api.callAction(this._did, this._bindDomain, ACTION.START_WASHING.siid, ACTION.START_WASHING.aiid, [
+      { piid: 10, value: '5,1' },
+    ]);
+    this._diag('[DOCK] Station (washboard) cleaning started', null, 'info');
   }
 
   async startSelfClean() {

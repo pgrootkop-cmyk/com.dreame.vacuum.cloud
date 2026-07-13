@@ -247,6 +247,11 @@ class DreameVacuumDriver extends Homey.Driver {
         await args.device.startDraining();
       });
 
+    this.homey.flow.getActionCard('start_station_cleaning')
+      .registerRunListener(async (args) => {
+        await args.device.startStationCleaning();
+      });
+
     this.homey.flow.getActionCard('clear_warning')
       .registerRunListener(async (args) => {
         await args.device.clearWarning();

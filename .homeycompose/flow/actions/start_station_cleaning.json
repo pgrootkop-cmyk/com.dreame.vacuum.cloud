@@ -1,0 +1,18 @@
+{
+  "title": {
+    "en": "Clean the base station"
+  },
+  "titleFormatted": {
+    "en": "Clean the base station (washboard)"
+  },
+  "hint": {
+    "en": "Starts cleaning the wash board of the base station. Only works on docks with a self-wash base."
+  },
+  "args": [
+    {
+      "name": "device",
+      "type": "device",
+      "filter": "driver_id=vacuum"
+    }
+  ]
+}
