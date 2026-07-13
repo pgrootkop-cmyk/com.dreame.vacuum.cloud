@@ -695,6 +695,20 @@ class DreameVacuumDriver extends Homey.Driver {
             id: `floor:${floor.mapId}:rooms:${r.id}`,
           });
         }
+        // Same-floor room pairs — Homey autocomplete is single-select, so combinations
+        // are the only way to pick multiple rooms by name (forum #79). Larger sets: use
+        // the room-IDs card.
+        if (floorRooms.length > 2 && floorRooms.length <= 8) {
+          for (let i = 0; i < floorRooms.length; i++) {
+            for (let j = i + 1; j < floorRooms.length; j++) {
+              results.push({
+                name: `${floorRooms[i].name} + ${floorRooms[j].name} (${floor.name})`,
+                description: `Room IDs: ${floorRooms[i].id}, ${floorRooms[j].id}`,
+                id: `floor:${floor.mapId}:rooms:${floorRooms[i].id},${floorRooms[j].id}`,
+              });
+            }
+          }
+        }
       }
       if (results.length === 0) {
         return [{ name: 'No rooms discovered yet', description: 'Rooms appear after the vacuum maps your home', id: '_none' }];

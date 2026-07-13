@@ -169,7 +169,7 @@ const STATE_MAP = {
 // Self-wash base status mapping
 const SELF_WASH_MAP = {
   0: 'idle', 1: 'washing', 2: 'drying', 3: 'returning_to_wash',
-  4: 'paused', 5: 'clean_add_water', 6: 'adding_water',
+  4: 'paused', 5: 'clean_add_water', 6: 'adding_water', 7: 'returning_to_wash',
 };
 
 // Auto empty status mapping
@@ -920,12 +920,14 @@ class DreameVacuumDevice extends Homey.Device {
     // Probe-once: detect which advanced properties the device supports
     // Re-probe when new probeable props are added (version bump resets probe)
     const probeVersion = this.getStoreValue('probeVersion') || 0;
-    if (probeVersion < 5) { // v5: add mopping type (scrub mode)
-      // Keep previously discovered unsupported props to avoid re-adding + removing capabilities
-      // which causes transient UI crashes in the Homey mobile app
-      this._unsupportedProps = new Set(this.getStoreValue('unsupportedProps') || []);
+    if (probeVersion < 6) { // v6: probe via relay — cloud-cache probe marked supported props unsupported
+      // Clear previous marks: v1.0.0 derived them from the cloud-cache endpoint, which
+      // returns error codes for cache misses, wrongly disabling features (shortcuts,
+      // CleanGenius, combo-dock detection) on affected devices.
+      this._unsupportedProps = new Set();
       this._probeComplete = false;
-      await this.setStoreValue('probeVersion', 5);
+      await this.setStoreValue('unsupportedProps', []);
+      await this.setStoreValue('probeVersion', 6);
       await this.setStoreValue('probeComplete', false);
     } else {
       this._unsupportedProps = new Set(this.getStoreValue('unsupportedProps') || []);
@@ -1508,10 +1510,13 @@ class DreameVacuumDevice extends Homey.Device {
           await this.setCapabilityValue('vacuumcleaner_state', homeyState).catch(this.error);
           await this.setCapabilityValue('onoff', homeyState === 'cleaning').catch(this.error);
 
-          // Detect cleaning→non-cleaning transition: mark session for deferred trigger
+          // Detect cleaning→non-cleaning transition: mark session for deferred trigger.
+          // Do NOT fire room-finished triggers here: on combo docks a mid-clean mop wash
+          // also transitions cleaning→docked, which fired them prematurely and cleared
+          // the room list so the real finish never triggered (forum #94). Rooms fire on
+          // STATUS 18→3 (like zones), with a session-end fallback below.
           if (prevHomeyState === 'cleaning' && homeyState !== 'cleaning') {
             this._wasCleaningSession = true;
-            if (this._cleaningRoomIds.length > 0) this._fireRoomFinishedTriggers();
             this._robotCurrentRoomId = null;
             this._robotPositionRaw = null;
           }
@@ -1519,6 +1524,8 @@ class DreameVacuumDevice extends Homey.Device {
           // Fire cleaning_finished + zone_cleaning_finished when robot reaches CHARGING
           if (homeyState === 'charging' && this._wasCleaningSession) {
             this._wasCleaningSession = false;
+            // Fallback for room-finished if the STATUS 18→3 transition was missed
+            if (this._cleaningRoomIds.length > 0) this._fireRoomFinishedTriggers();
             const area = this.getCapabilityValue('dreame_cleaned_area') || 0;
             const time = this.getCapabilityValue('dreame_cleaning_time') || 0;
 
@@ -1697,6 +1704,12 @@ class DreameVacuumDevice extends Homey.Device {
       case '4-25': // SELF_WASH_STATUS
         if (SELF_WASH_MAP[value] !== undefined) {
           await this.setCapabilityValue('dreame_self_wash_status', SELF_WASH_MAP[value]).catch(this.error);
+          // Derive dock state from self-wash activity. The dedicated DOCK_CLEANING_STATUS
+          // property (4-61) never updates on most models (Tasshack defines but never uses
+          // it), which left the dock state stuck on "idle" (forum #80).
+          const dockState = (value === 1 || value === 5 || value === 6) ? 'cleaning'
+            : value === 2 ? 'drying' : 'idle';
+          await this._updateDockState(dockState);
         }
         break;
 
@@ -1942,19 +1955,22 @@ class DreameVacuumDevice extends Homey.Device {
         }
         break;
 
-      case '4-61': // DOCK_CLEANING_STATUS
+      case '4-61': // DOCK_CLEANING_STATUS (rarely reported; dock state is mainly derived from 4-25)
         if (DOCK_CLEANING_STATUS_MAP[value] !== undefined) {
-          const dockState = DOCK_CLEANING_STATUS_MAP[value];
-          await this.setCapabilityValue('dreame_dock_cleaning_status', dockState).catch(this.error);
-          const dockLabel = dockState.charAt(0).toUpperCase() + dockState.slice(1);
-          this.homey.flow.getDeviceTriggerCard('dock_state_changed')
-            .trigger(this, { state: dockLabel }, { state: dockState }).catch(e => this.error('Dock state trigger:', e));
+          await this._updateDockState(DOCK_CLEANING_STATUS_MAP[value]);
         }
         break;
 
       case '4-1': { // STATUS (cleaning substatus)
         // Track zone cleaning: STATUS 19 = Zone Cleaning (Tasshack DreameVacuumStatus.ZONE_CLEANING)
         if (value === 19 && !this._wasCruisingPoint) this._wasZoneCleaning = true;
+        // Room cleaning completion: STATUS 18 (Segment Cleaning) → 3 (Returning).
+        // Mid-clean mop washes report a wash status instead of 3, so this only
+        // fires when the room task actually completed (forum #94).
+        if (this._lastDreameStatus === 18 && value === 3 && this._cleaningRoomIds.length > 0) {
+          this._diag('[STATUS] Segment cleaning → Returning (firing room finished triggers)', null, 'info');
+          this._fireRoomFinishedTriggers();
+        }
         // Detect zone/waypoint completion: transition FROM zone cleaning (19) to returning (3)
         // Fire triggers here so user can react BEFORE robot reaches dock
         if (this._lastDreameStatus === 19 && value === 3) {
@@ -2192,7 +2208,15 @@ class DreameVacuumDevice extends Homey.Device {
       // Use cloud-cache endpoint (reads cached state, does NOT relay to device).
       // This prevents 80001 "device offline" errors and "Manual docking" issues
       // that occur when relay-based polling interferes with active cleaning.
-      const results = await api.getPropertiesFromCloud(this._did, props);
+      // Exception: the one-time capability probe must use the relay — the cloud
+      // cache returns error codes for cache misses on supported properties, which
+      // wrongly marked features as unsupported. The probe waits until the device
+      // is not cleaning so the relay cannot interfere with an active run.
+      const probing = !this._probeComplete
+        && this.getCapabilityValue('vacuumcleaner_state') !== 'cleaning';
+      const results = probing
+        ? await api.getProperties(this._did, this._bindDomain, props)
+        : await api.getPropertiesFromCloud(this._did, props);
 
       if (!Array.isArray(results)) {
         this.error('Unexpected poll result:', results);
@@ -2201,8 +2225,8 @@ class DreameVacuumDevice extends Homey.Device {
 
       for (const r of results) {
         if (r.code !== undefined && r.code !== 0) {
-          // Track unsupported properties (code -2)
-          if (r.code === -2 && !this._probeComplete) {
+          // Track unsupported properties (code -2) — only trusted from the relay probe
+          if (r.code === -2 && probing) {
             const propKey = `${r.siid}-${r.piid}`;
             this._unsupportedProps.add(propKey);
           }
@@ -2213,8 +2237,8 @@ class DreameVacuumDevice extends Homey.Device {
         await this._applyProperty(key, r.value);
       }
 
-      // Complete probe and save unsupported props
-      if (!this._probeComplete) {
+      // Complete probe and save unsupported props (only after a relay probe pass ran)
+      if (probing && !this._probeComplete) {
         this._probeComplete = true;
         await this.setStoreValue('probeComplete', true);
         await this.setStoreValue('unsupportedProps', [...this._unsupportedProps]);
@@ -2429,6 +2453,18 @@ class DreameVacuumDevice extends Homey.Device {
   }
 
   // Auto-switch settings helper (writes JSON key-value to siid:4, piid:50)
+  /**
+   * Update the dock state capability and fire the trigger, only on actual change.
+   */
+  async _updateDockState(dockState) {
+    const previous = this.getCapabilityValue('dreame_dock_cleaning_status');
+    if (previous === dockState) return;
+    await this.setCapabilityValue('dreame_dock_cleaning_status', dockState).catch(this.error);
+    const dockLabel = dockState.charAt(0).toUpperCase() + dockState.slice(1);
+    this.homey.flow.getDeviceTriggerCard('dock_state_changed')
+      .trigger(this, { state: dockLabel }, { state: dockState }).catch(e => this.error('Dock state trigger:', e));
+  }
+
   async _setAutoSwitchProperty(key, value) {
     this._lastCommandTime = Date.now();
     const api = this._getApi();
@@ -2464,6 +2500,16 @@ class DreameVacuumDevice extends Homey.Device {
     const api = this._getApi();
     const dreameValue = CLEANGENIUS_MODE_MAP[method];
     if (dreameValue === undefined) throw new Error(`Invalid CleanGenius mode: ${method}`);
+
+    // The method only takes effect while CleanGenius is active — the device keeps
+    // reporting Vacuum & Mop otherwise (forum #77/#91). Enable Routine Cleaning first
+    // when it is off so the card always has a visible effect.
+    const cgLevel = this.hasCapability('dreame_cleangenius') ? this.getCapabilityValue('dreame_cleangenius') : null;
+    if (cgLevel === 'off') {
+      this._diag('[CLEANGENIUS] Enabling CleanGenius (routine) before setting method', null, 'info');
+      await this.setCleanGenius('routine');
+    }
+
     await api.setProperties(this._did, this._bindDomain, [
       { siid: PROP.CLEANGENIUS_MODE.siid, piid: PROP.CLEANGENIUS_MODE.piid, value: dreameValue },
     ]);
@@ -2816,12 +2862,15 @@ class DreameVacuumDevice extends Homey.Device {
     return this._cleaningRoomIds.includes(roomId);
   }
 
-  async startRoomCleaning(roomId, repeats, suction, water, mode) {
+  async startRoomCleaning(roomId, repeats, suction, water, mode, { keepCleanGenius = false } = {}) {
     this._lastCommandTime = Date.now();
     const api = this._getApi();
     const suctionValue = SUCTION_MAP[suction] !== undefined ? SUCTION_MAP[suction] : 1;
     const waterValue = WATER_VOLUME_MAP[water] !== undefined ? WATER_VOLUME_MAP[water] : 2;
     const repeatCount = Math.max(1, Math.min(3, repeats || 1));
+
+    // Explicit per-card suction/water: CleanGenius would override them (forum #79/#80)
+    if (!keepCleanGenius) await this._disableCleanGeniusIfActive();
 
     // Set cleaning mode before starting if specified
     if (mode && CLEANING_MODE_MAP[mode] !== undefined) {
@@ -3038,12 +3087,15 @@ class DreameVacuumDevice extends Homey.Device {
 
   // Multi-room cleaning
 
-  async startMultiRoomCleaning(roomIds, repeats, suction, water) {
+  async startMultiRoomCleaning(roomIds, repeats, suction, water, { keepCleanGenius = false } = {}) {
     this._lastCommandTime = Date.now();
     const api = this._getApi();
     const suctionValue = SUCTION_MAP[suction] !== undefined ? SUCTION_MAP[suction] : 1;
     const waterValue = WATER_VOLUME_MAP[water] !== undefined ? WATER_VOLUME_MAP[water] : 2;
     const repeatCount = Math.max(1, Math.min(3, repeats || 1));
+
+    // Explicit per-card suction/water: CleanGenius would override them (forum #79/#80)
+    if (!keepCleanGenius) await this._disableCleanGeniusIfActive();
 
     const cleanlist = roomIds.map(id => [id, repeatCount, suctionValue, waterValue, 1]);
     const params = JSON.stringify({ selects: cleanlist });
@@ -3059,17 +3111,17 @@ class DreameVacuumDevice extends Homey.Device {
     this._fireRoomStartedTriggers(roomIds);
   }
 
-  // Simple room cleaning (use current device settings)
+  // Simple room cleaning (use current device settings, incl. CleanGenius if active)
   async startRoomCleaningSimple(roomId) {
     const suction = this.getCapabilityValue('dreame_suction_level') || 'standard';
     const water = this.getCapabilityValue('dreame_water_volume') || 'medium';
-    await this.startRoomCleaning(roomId, 1, suction, water);
+    await this.startRoomCleaning(roomId, 1, suction, water, null, { keepCleanGenius: true });
   }
 
   async startMultiRoomCleaningSimple(roomIds) {
     const suction = this.getCapabilityValue('dreame_suction_level') || 'standard';
     const water = this.getCapabilityValue('dreame_water_volume') || 'medium';
-    await this.startMultiRoomCleaning(roomIds, 1, suction, water);
+    await this.startMultiRoomCleaning(roomIds, 1, suction, water, { keepCleanGenius: true });
   }
 
   // Shortcuts
