@@ -1,6 +1,7 @@
 'use strict';
 
 const Homey = require('homey');
+const { HomeyAPI } = require('homey-api');
 const zlib = require('zlib');
 const crypto = require('crypto');
 const DreameApi = require('./lib/DreameApi');
@@ -145,59 +146,96 @@ class DreameApp extends Homey.App {
   getVacuumData() {
     const driver = this.homey.drivers.getDriver('vacuum');
     const devices = driver ? driver.getDevices() : [];
-    return devices.map(d => {
-      const caps = {};
-      for (const cap of d.getCapabilities()) {
-        caps[cap] = d.getCapabilityValue(cap);
-      }
-      const result = {
-        id: d.getData().id,
-        homeyId: d.id,
-        name: d.getName(),
-        rooms: d.getRooms(),
-        capabilities: caps,
-        store: {
-          model: d.getStoreValue('model'),
-          mapObjectName: d.getStoreValue('mapObjectName'),
-        },
-      };
-      // Multi-floor metadata (only included when device supports it)
-      if (d.isMultiFloor()) {
-        result.isMultiFloor = true;
-        result.currentMapId = d.getCurrentMapId();
-        // Include per-floor rooms for settings display
-        result.floors = d.getFloorList().map(f => ({
-          ...f,
-          rooms: d.getFloorRooms(f.mapId),
-        }));
-      }
-      return result;
-    });
+    return devices.map(d => this.getVacuumDataForDevice(d));
+  }
+
+  getVacuumDataForDevice(d) {
+    const caps = {};
+    for (const cap of d.getCapabilities()) {
+      caps[cap] = d.getCapabilityValue(cap);
+    }
+    const result = {
+      id: d.getData().id,
+      name: d.getName(),
+      rooms: d.getRooms(),
+      capabilities: caps,
+      store: {
+        model: d.getStoreValue('model'),
+        mapObjectName: d.getStoreValue('mapObjectName'),
+      },
+    };
+    // Multi-floor metadata (only included when device supports it)
+    if (d.isMultiFloor()) {
+      result.isMultiFloor = true;
+      result.currentMapId = d.getCurrentMapId();
+      // Include per-floor rooms for settings display
+      result.floors = d.getFloorList().map(f => ({
+        ...f,
+        rooms: d.getFloorRooms(f.mapId),
+      }));
+    }
+    return result;
   }
 
   /**
-   * Find a vacuum device by Dreame DID or Homey device index.
+   * Resolve a Web API device UUID (what Homey.getDeviceIds() returns in widgets)
+   * to a Dreame DID. SDK Device instances don't expose the Web API UUID, so this
+   * goes through homey-api and matches our driver's devices on data.id.
    */
-  _findVacuumDevice(did) {
+  async _resolveWebApiUuid(uuid) {
+    if (this._uuidToDid && this._uuidToDid.has(uuid)) {
+      return this._uuidToDid.get(uuid);
+    }
+    // Unknown UUID: refresh the map, but at most once per minute
+    const now = Date.now();
+    if (this._uuidMapFetchedAt && now - this._uuidMapFetchedAt < 60000) {
+      return this._uuidToDid ? this._uuidToDid.get(uuid) : undefined;
+    }
+    this._uuidMapFetchedAt = now;
+    try {
+      if (!this._webApi) {
+        this._webApi = await HomeyAPI.createAppAPI({ homey: this.homey });
+      }
+      const webDevices = await this._webApi.devices.getDevices();
+      const uuidToDid = new Map();
+      for (const wd of Object.values(webDevices)) {
+        if (wd.driverId && wd.driverId.includes('com.dreame.vacuum.cloud') && wd.data && wd.data.id != null) {
+          uuidToDid.set(wd.id, wd.data.id);
+        }
+      }
+      this._uuidToDid = uuidToDid;
+    } catch (e) {
+      this.error(`Web API device lookup failed: ${e.message}`);
+    }
+    return this._uuidToDid ? this._uuidToDid.get(uuid) : undefined;
+  }
+
+  /**
+   * Find a vacuum device by Dreame DID or Web API device UUID (from widgets).
+   * Returns null when an explicit id has no match — falling back to the first
+   * device here is what made every widget show the same vacuum (#38).
+   */
+  async _findVacuumDevice(did) {
     const driver = this.homey.drivers.getDriver('vacuum');
     const devices = driver ? driver.getDevices() : [];
     if (!did) return devices[0] || null;
     // Match by Dreame DID
     const byDid = devices.find(d => d.getData().id === did);
     if (byDid) return byDid;
-    // Match by Homey device UUID (widget Homey.getDeviceIds() returns these)
-    const byHomeyId = devices.find(d => d.id === did);
-    if (byHomeyId) return byHomeyId;
-    // Fallback
-    return devices[0] || null;
+    // Match by Web API device UUID (widget Homey.getDeviceIds() returns these)
+    const dreameId = await this._resolveWebApiUuid(did);
+    if (dreameId != null) {
+      return devices.find(d => d.getData().id === dreameId) || null;
+    }
+    return null;
   }
 
   /**
    * Get rendered map as RGBA pixel data + dimensions for a device.
    * Returns { width, height, pixels: base64-encoded RGBA, rooms: [...] } or null.
    */
-  getRenderedMap(did, colorScheme, mapId) {
-    const device = this._findVacuumDevice(did);
+  async getRenderedMap(did, colorScheme, mapId) {
+    const device = await this._findVacuumDevice(did);
     if (!device) return null;
 
     // Always render from the active floor's cached map (flat store).
@@ -210,8 +248,8 @@ class DreameApp extends Homey.App {
     return this._renderMapPixels(raw, rooms, model);
   }
 
-  getRobotPosition(did) {
-    const device = this._findVacuumDevice(did);
+  async getRobotPosition(did) {
+    const device = await this._findVacuumDevice(did);
     if (!device) return null;
     return device.getRobotPosition();
   }
@@ -468,6 +506,10 @@ class DreameApp extends Homey.App {
     if (this._mqtt) {
       this._mqtt.disconnect();
       this._mqtt = null;
+    }
+    if (this._webApi) {
+      try { this._webApi.destroy(); } catch (e) { /* already destroyed */ }
+      this._webApi = null;
     }
   }
 

@@ -20,14 +20,14 @@ module.exports = {
 
   async getRooms({ homey, query }) {
     const did = query.did;
-    const device = homey.app._findVacuumDevice(did);
+    const device = await homey.app._findVacuumDevice(did);
     if (!device) return [];
     return device.getRooms();
   },
 
   async getZones({ homey, query }) {
     const did = query.did;
-    const device = homey.app._findVacuumDevice(did);
+    const device = await homey.app._findVacuumDevice(did);
     if (!device) return [];
     const mapId = query.mapId ? parseInt(query.mapId, 10) : null;
     if (mapId != null && device.isMultiFloor()) {
@@ -38,7 +38,7 @@ module.exports = {
 
   async saveZone({ homey, body }) {
     const did = body.did;
-    const device = homey.app._findVacuumDevice(did);
+    const device = await homey.app._findVacuumDevice(did);
     if (!device) throw new Error('Device not found');
     const zone = body.zone;
     if (!zone || !zone.name || !zone.coords) throw new Error('Invalid zone data');
@@ -53,7 +53,7 @@ module.exports = {
 async deleteZone({ homey, query }) {
     const did = query.did;
     const zoneId = query.zoneId;
-    const device = homey.app._findVacuumDevice(did);
+    const device = await homey.app._findVacuumDevice(did);
     if (!device) throw new Error('Device not found');
     if (!zoneId) throw new Error('Missing zoneId');
     await device.deleteZone(zoneId);
@@ -64,7 +64,7 @@ async deleteZone({ homey, query }) {
   async deleteZoneGet({ homey, query }) {
     const did = query.did;
     const zoneId = query.zoneId;
-    const device = homey.app._findVacuumDevice(did);
+    const device = await homey.app._findVacuumDevice(did);
     if (!device) throw new Error('Device not found');
     if (!zoneId) throw new Error('Missing zoneId');
     try {
@@ -78,7 +78,7 @@ async deleteZone({ homey, query }) {
 
   async getWaypoints({ homey, query }) {
     const did = query.did;
-    const device = homey.app._findVacuumDevice(did);
+    const device = await homey.app._findVacuumDevice(did);
     if (!device) return [];
     const mapId = query.mapId ? parseInt(query.mapId, 10) : null;
     if (mapId != null && device.isMultiFloor()) {
@@ -89,7 +89,7 @@ async deleteZone({ homey, query }) {
 
   async saveWaypoint({ homey, body }) {
     const did = body.did;
-    const device = homey.app._findVacuumDevice(did);
+    const device = await homey.app._findVacuumDevice(did);
     if (!device) throw new Error('Device not found');
     const wp = body.waypoint;
     if (!wp || !wp.name || !wp.coords) throw new Error('Invalid waypoint data');
@@ -99,7 +99,7 @@ async deleteZone({ homey, query }) {
   async deleteWaypointGet({ homey, query }) {
     const did = query.did;
     const wpId = query.wpId;
-    const device = homey.app._findVacuumDevice(did);
+    const device = await homey.app._findVacuumDevice(did);
     if (!device) throw new Error('Device not found');
     if (!wpId) throw new Error('Missing wpId');
     await device.deleteWaypoint(wpId);
@@ -108,7 +108,7 @@ async deleteZone({ homey, query }) {
 
   async getFloors({ homey, query }) {
     const did = query.did;
-    const device = homey.app._findVacuumDevice(did);
+    const device = await homey.app._findVacuumDevice(did);
     if (!device || !device.isMultiFloor()) return [];
     return device.getFloorList();
   },
@@ -116,7 +116,7 @@ async deleteZone({ homey, query }) {
   async switchFloor({ homey, query }) {
     const did = query.did;
     const mapId = query.mapId ? parseInt(query.mapId, 10) : null;
-    const device = homey.app._findVacuumDevice(did);
+    const device = await homey.app._findVacuumDevice(did);
     if (!device) throw new Error('Device not found');
     if (mapId == null) throw new Error('Missing mapId');
     await device.switchFloor(mapId);
