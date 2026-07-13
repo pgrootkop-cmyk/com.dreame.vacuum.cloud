@@ -16,7 +16,9 @@
   "category": [
     "appliances"
   ],
-  "permissions": [],
+  "permissions": [
+    "homey:manager:api"
+  ],
   "api": {
     "getVacuumData": {
       "method": "GET",

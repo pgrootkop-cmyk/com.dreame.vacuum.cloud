@@ -2,18 +2,13 @@
 
 module.exports = {
   async getDeviceData({ homey, query }) {
-    const devices = homey.app.getVacuumData();
-    const did = query.did;
-    if (did) {
-      const match = devices.find(d => d.id === did || d.homeyId === did);
-      return match || null;
-    }
-    return devices[0] || null;
+    const device = await homey.app._findVacuumDevice(query.did);
+    return device ? homey.app.getVacuumDataForDevice(device) : null;
   },
 
   async getMapData({ homey, query }) {
     const did = query.did;
-    const device = homey.app._findVacuumDevice(did);
+    const device = await homey.app._findVacuumDevice(did);
     if (!device) return null;
     const dreameId = device.getData().id;
     return homey.app.getRenderedMap(dreameId, query.colorScheme);
@@ -21,7 +16,7 @@ module.exports = {
 
   async getRobotPosition({ homey, query }) {
     const did = query.did;
-    const device = homey.app._findVacuumDevice(did);
+    const device = await homey.app._findVacuumDevice(did);
     if (!device) return null;
     return device.getRobotPosition();
   },
