@@ -132,8 +132,9 @@
             { "id": "cn", "label": { "en": "China" } },
             { "id": "de", "label": { "en": "Germany (EU)" } },
             { "id": "us", "label": { "en": "United States" } },
-            { "id": "sg", "label": { "en": "Singapore" } },
+            { "id": "sg", "label": { "en": "Singapore / Australia" } },
             { "id": "kr", "label": { "en": "South Korea" } },
+            { "id": "ru", "label": { "en": "Russia" } },
             { "id": "eu", "label": { "en": "Europe" } }
           ]
         }

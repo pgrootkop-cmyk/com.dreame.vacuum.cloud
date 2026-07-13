@@ -3038,12 +3038,17 @@ class DreameVacuumDevice extends Homey.Device {
 
   // Multi-room cleaning
 
-  async startMultiRoomCleaning(roomIds, repeats, suction, water) {
+  async startMultiRoomCleaning(roomIds, repeats, suction, water, { mode = null } = {}) {
     this._lastCommandTime = Date.now();
     const api = this._getApi();
     const suctionValue = SUCTION_MAP[suction] !== undefined ? SUCTION_MAP[suction] : 1;
     const waterValue = WATER_VOLUME_MAP[water] !== undefined ? WATER_VOLUME_MAP[water] : 2;
     const repeatCount = Math.max(1, Math.min(3, repeats || 1));
+
+    // Set cleaning mode before starting if specified (e.g. vacuum-only room cleaning)
+    if (mode && CLEANING_MODE_MAP[mode] !== undefined) {
+      await this.setCleaningMode(mode);
+    }
 
     const cleanlist = roomIds.map(id => [id, repeatCount, suctionValue, waterValue, 1]);
     const params = JSON.stringify({ selects: cleanlist });

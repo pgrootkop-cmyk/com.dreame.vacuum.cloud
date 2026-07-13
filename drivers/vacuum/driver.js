@@ -231,7 +231,8 @@ class DreameVacuumDriver extends Homey.Driver {
       const parsed = this._parseMultiRoomArg(args.rooms.id);
       if (parsed.roomIds.length === 0) throw new Error('No valid rooms selected');
       await this._ensureFloor(args.device, parsed.floorMapId);
-      await args.device.startMultiRoomCleaning(parsed.roomIds, args.repeats, args.suction, args.water);
+      const mode = args.mode && args.mode !== 'current' ? args.mode : null;
+      await args.device.startMultiRoomCleaning(parsed.roomIds, args.repeats, args.suction, args.water, { mode });
     });
     multiRoomCard.registerArgumentAutocompleteListener('rooms', async (query, args) => {
       return this._getMultiRoomAutocomplete(query, args);
@@ -284,14 +285,16 @@ class DreameVacuumDriver extends Homey.Driver {
       .registerRunListener(async (args) => {
         const roomId = parseInt(args.room_id, 10);
         if (isNaN(roomId) || roomId <= 0) throw new Error('Invalid room ID');
-        await args.device.startRoomCleaning(roomId, args.repeats, args.suction, args.water);
+        const mode = args.mode && args.mode !== 'current' ? args.mode : null;
+        await args.device.startRoomCleaning(roomId, args.repeats, args.suction, args.water, mode);
       });
 
     this.homey.flow.getActionCard('start_multi_room_cleaning_by_id')
       .registerRunListener(async (args) => {
         const roomIds = String(args.room_ids).split(',').map(id => parseInt(id.trim(), 10)).filter(id => !isNaN(id) && id > 0);
         if (roomIds.length === 0) throw new Error('No valid room IDs provided');
-        await args.device.startMultiRoomCleaning(roomIds, args.repeats, args.suction, args.water);
+        const mode = args.mode && args.mode !== 'current' ? args.mode : null;
+        await args.device.startMultiRoomCleaning(roomIds, args.repeats, args.suction, args.water, { mode });
       });
 
     this.homey.flow.getConditionCard('is_cleaning_room_by_id')
