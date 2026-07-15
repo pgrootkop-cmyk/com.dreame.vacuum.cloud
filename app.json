@@ -3737,6 +3737,37 @@
               "hint": {
                 "en": "Let Homey manage multiple floors/maps (floor selector, per-floor rooms and flow cards). Disable if you manage maps in the Dreame app only, or if floor switching causes problems. Only applies to vacuums that support multiple maps."
               }
+            },
+            {
+              "id": "cleaning_mode_swap",
+              "type": "dropdown",
+              "label": {
+                "en": "Sweeping / Sweeping & Mopping mapping"
+              },
+              "value": "auto",
+              "hint": {
+                "en": "Some models use opposite values for Sweeping and Sweeping & Mopping. Auto detects this from the dock type. If these two modes are swapped on your vacuum, try the other options."
+              },
+              "values": [
+                {
+                  "id": "auto",
+                  "label": {
+                    "en": "Auto (detect from dock type)"
+                  }
+                },
+                {
+                  "id": "normal",
+                  "label": {
+                    "en": "Normal (no swap)"
+                  }
+                },
+                {
+                  "id": "swapped",
+                  "label": {
+                    "en": "Swapped"
+                  }
+                }
+              ]
             }
           ]
         }

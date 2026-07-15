@@ -323,7 +323,9 @@ function combineGroupedMode(mode, washFreq, waterLevel) {
 
 // On mop_pad_lifting devices (combo dock), wire values 0 and 2 are swapped:
 // Wire 0 = Sweeping & Mopping (enum 2), Wire 2 = Sweeping (enum 0)
-// This matches Tasshack device.py lines 965-980 and 1952-1976
+// This matches Tasshack device.py lines 965-980 and 1952-1976.
+// Some units report the opposite (L20 Ultra, forum #108), so the swap can be
+// overridden per device via the "cleaning_mode_swap" setting — see _swapModes().
 function swapMopPadLiftingMode(wireValue) {
   if (wireValue === 0) return 2;
   if (wireValue === 2) return 0;
@@ -1676,7 +1678,7 @@ class DreameVacuumDevice extends Homey.Device {
           this._isGroupedMode = true;
           this._groupedModeRaw = value;
           // On mop_pad_lifting devices, wire values 0↔2 are swapped
-          const modeEnum = this._mopPadLifting ? swapMopPadLiftingMode(grouped.mode) : grouped.mode;
+          const modeEnum = this._swapModes(grouped.mode);
           if (CLEANING_MODE_REVERSE[modeEnum] !== undefined) {
             if (isCleaning || !this.getCapabilityValue('dreame_cleaning_mode')) {
               await this.setCapabilityValue('dreame_cleaning_mode', CLEANING_MODE_REVERSE[modeEnum]).catch(this.error);
@@ -1691,7 +1693,7 @@ class DreameVacuumDevice extends Homey.Device {
         } else {
           this._isGroupedMode = false;
           // On mop_pad_lifting devices, wire values 0↔2 are swapped
-          const modeEnum = this._mopPadLifting ? swapMopPadLiftingMode(value) : value;
+          const modeEnum = this._swapModes(value);
           if (CLEANING_MODE_REVERSE[modeEnum] !== undefined) {
             if (isCleaning || !this.getCapabilityValue('dreame_cleaning_mode')) {
               await this.setCapabilityValue('dreame_cleaning_mode', CLEANING_MODE_REVERSE[modeEnum]).catch(this.error);
@@ -2312,7 +2314,7 @@ class DreameVacuumDevice extends Homey.Device {
     if (mode && CLEANING_MODE_MAP[mode] !== undefined) {
       // On mop_pad_lifting devices, swap wire values 0↔2
       let modeValue = CLEANING_MODE_MAP[mode];
-      modeValue = this._mopPadLifting ? swapMopPadLiftingMode(modeValue) : modeValue;
+      modeValue = this._swapModes(modeValue);
       if (this._isGroupedMode && this._groupedModeRaw !== undefined) {
         const grouped = splitGroupedMode(this._groupedModeRaw, this._mopPadLifting);
         modeValue = combineGroupedMode(modeValue, grouped.washFreq, grouped.waterLevel);
@@ -2419,7 +2421,7 @@ class DreameVacuumDevice extends Homey.Device {
     await this._disableCleanGeniusIfActive();
 
     // On mop_pad_lifting devices, swap wire values 0↔2 (sweeping↔sweeping_and_mopping)
-    let wireValue = this._mopPadLifting ? swapMopPadLiftingMode(dreameValue) : dreameValue;
+    let wireValue = this._swapModes(dreameValue);
 
     let valueToSend = wireValue;
     // If device uses grouped mode, preserve wash frequency and water level
@@ -2459,6 +2461,17 @@ class DreameVacuumDevice extends Homey.Device {
   }
 
   // Auto-switch settings helper (writes JSON key-value to siid:4, piid:50)
+  /**
+   * Apply the Sweeping ↔ Sweeping & Mopping wire-value swap when applicable.
+   * "auto" follows combo-dock detection (Tasshack behavior); "normal"/"swapped"
+   * override it for units whose firmware uses the other convention (forum #108).
+   */
+  _swapModes(value) {
+    const pref = this.getSetting('cleaning_mode_swap') || 'auto';
+    const swap = pref === 'swapped' || (pref === 'auto' && this._mopPadLifting);
+    return swap ? swapMopPadLiftingMode(value) : value;
+  }
+
   /**
    * Update the dock state capability and fire the trigger, only on actual change.
    */
@@ -2557,7 +2570,7 @@ class DreameVacuumDevice extends Homey.Device {
       const currentMode = this.getCapabilityValue('dreame_cleaning_mode');
       // Convert enum to wire value: need swap for mop_pad_lifting devices
       let modeEnum = (currentMode && CLEANING_MODE_MAP[currentMode] !== undefined) ? CLEANING_MODE_MAP[currentMode] : 2;
-      mode = this._mopPadLifting ? swapMopPadLiftingMode(modeEnum) : modeEnum;
+      mode = this._swapModes(modeEnum);
       const currentWater = this.getCapabilityValue('dreame_water_volume');
       waterLevel = (currentWater && WATER_VOLUME_MAP[currentWater] !== undefined) ? WATER_VOLUME_MAP[currentWater] : 2;
     }
@@ -3462,7 +3475,7 @@ class DreameVacuumDevice extends Homey.Device {
     };
 
     // Switch to sweeping-only + quiet suction (no mopping, minimal noise)
-    const sweepingWire = this._mopPadLifting ? swapMopPadLiftingMode(0) : 0;
+    const sweepingWire = this._swapModes(0);
     let modeValue = sweepingWire;
     if (this._isGroupedMode && this._groupedModeRaw !== undefined) {
       const grouped = splitGroupedMode(this._groupedModeRaw, this._mopPadLifting);
@@ -3507,7 +3520,7 @@ class DreameVacuumDevice extends Homey.Device {
     const propsToRestore = [];
     if (saved.mode && CLEANING_MODE_MAP[saved.mode] !== undefined) {
       let modeValue = CLEANING_MODE_MAP[saved.mode];
-      modeValue = this._mopPadLifting ? swapMopPadLiftingMode(modeValue) : modeValue;
+      modeValue = this._swapModes(modeValue);
       if (this._isGroupedMode && this._groupedModeRaw !== undefined) {
         const grouped = splitGroupedMode(this._groupedModeRaw, this._mopPadLifting);
         modeValue = combineGroupedMode(modeValue, grouped.washFreq, grouped.waterLevel);
