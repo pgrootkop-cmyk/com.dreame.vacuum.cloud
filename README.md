@@ -82,7 +82,7 @@ Some features available in the Dreame Home app or in [Tasshack/dreame-vacuum](ht
 
 ## Supported Devices
 
-Should work with any robot vacuum controllable via the [Dreame Home](https://www.dreame.nl/pages/dreame-home) app, including the **X40**, **X30**, **L20**, **L10**, and other models. Currently only tested with the Dreame X40 Ultra.
+Should work with any robot vacuum controllable via the [Dreame Home](https://www.dreame.nl/pages/dreame-home) app, including the **X60**, **X50**, **X40**, **X30**, **L20**, **L10**, and other models. Currently only tested with the Dreame X40 Ultra.
 
 ## Where to Find the Settings
 

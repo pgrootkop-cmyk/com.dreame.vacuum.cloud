@@ -261,25 +261,38 @@ class DreameApp extends Homey.App {
   _getMapIv(model) {
     if (!model) return null;
     const suffix = model.replace('dreame.vacuum.', '');
-    // Specific model overrides (from Tasshack DEVICE_INFO)
-    const specific = {
-      r2209: 'qFKhvoAqRFTPfKN6', r2211o: 'dndRQ3z8ACjDdDMo', r2216o: '4sCv3Q2BtbWVBIB2',
-      r2240: 'ojxGnogHfVuefVfx', r2250: 'nf3Zi2Mq8jD5AAOm', r2254: 'wRy05fYLQJMRH6Mj',
-      r2210: 'OFULk9To37qRdXY3', p2149o: 'RNO4p35b2QKaovHC',
+    // Explicit non-default IVs, generated from Tasshack DEVICE_INFO (dev branch,
+    // v2.0.0b25). Every model not listed here uses the default IV — including the
+    // X60 family (r5089b/r5089u/r6001a/r9515*). Replaces the old prefix heuristics,
+    // which mis-mapped e.g. r249x to the 3F family.
+    const MODEL_IV = {
+      r2243: '3F0ji4ufBMaH1ThM', r2312: '3F0ji4ufBMaH1ThM', r2312a: '3F0ji4ufBMaH1ThM', r2328: '3F0ji4ufBMaH1ThM', r2380: '3F0ji4ufBMaH1ThM', r2380r: '3F0ji4ufBMaH1ThM', r2388: '3F0ji4ufBMaH1ThM', r2422: '3F0ji4ufBMaH1ThM',
+      r2422a: '3F0ji4ufBMaH1ThM', r2422b: '3F0ji4ufBMaH1ThM', r2422c: '3F0ji4ufBMaH1ThM', r2458a: '3F0ji4ufBMaH1ThM', r2458h: '3F0ji4ufBMaH1ThM', r2459a: '3F0ji4ufBMaH1ThM', r2459h: '3F0ji4ufBMaH1ThM', r2459k: '3F0ji4ufBMaH1ThM',
+      r2459r: '3F0ji4ufBMaH1ThM', r2463r: '3F0ji4ufBMaH1ThM', r2478r: '3F0ji4ufBMaH1ThM', r2478v: '3F0ji4ufBMaH1ThM', r95239: '3F0ji4ufBMaH1ThM', r9523a: '3F0ji4ufBMaH1ThM', r9523b: '3F0ji4ufBMaH1ThM', r9523c: '3F0ji4ufBMaH1ThM',
+      r9523h: '3F0ji4ufBMaH1ThM', r9523k: '3F0ji4ufBMaH1ThM', r9523t: '3F0ji4ufBMaH1ThM', r9523u: '3F0ji4ufBMaH1ThM',
+      r2216o: '4sCv3Q2BtbWVBIB2',
+      p2114a: '6PFiLPYMHLylp7RR', p2114o: '6PFiLPYMHLylp7RR',
+      p2140: '8qnS9dqgT3CppGe1', p2140a: '8qnS9dqgT3CppGe1', p2140o: '8qnS9dqgT3CppGe1', p2140p: '8qnS9dqgT3CppGe1', p2140q: '8qnS9dqgT3CppGe1',
+      r2251a: 'FmnfaI2pbem0k75t', r2251o: 'FmnfaI2pbem0k75t', r2257o: 'FmnfaI2pbem0k75t', r2317: 'FmnfaI2pbem0k75t', r2345a: 'FmnfaI2pbem0k75t', r2345h: 'FmnfaI2pbem0k75t', r2363: 'FmnfaI2pbem0k75t', r2363a: 'FmnfaI2pbem0k75t',
+      r2363n: 'FmnfaI2pbem0k75t', r2364: 'FmnfaI2pbem0k75t', r23646: 'FmnfaI2pbem0k75t', r2364a: 'FmnfaI2pbem0k75t', r2382a: 'FmnfaI2pbem0k75t', r2382k: 'FmnfaI2pbem0k75t', r2382r: 'FmnfaI2pbem0k75t', r2383a: 'FmnfaI2pbem0k75t',
+      r2383k: 'FmnfaI2pbem0k75t', r2386: 'FmnfaI2pbem0k75t', r2471: 'FmnfaI2pbem0k75t', r2563b: 'FmnfaI2pbem0k75t', r2563v: 'FmnfaI2pbem0k75t', r25642: 'FmnfaI2pbem0k75t', r2564b: 'FmnfaI2pbem0k75t', r2564s: 'FmnfaI2pbem0k75t',
+      r2564z: 'FmnfaI2pbem0k75t', r2565a: 'FmnfaI2pbem0k75t', r2565v: 'FmnfaI2pbem0k75t', r2566a: 'FmnfaI2pbem0k75t', r2566h: 'FmnfaI2pbem0k75t', r53148: 'FmnfaI2pbem0k75t', r5314a: 'FmnfaI2pbem0k75t', r5314s: 'FmnfaI2pbem0k75t',
+      r5314z: 'FmnfaI2pbem0k75t', r531ra: 'FmnfaI2pbem0k75t', r531rh: 'FmnfaI2pbem0k75t', r53456: 'FmnfaI2pbem0k75t', r5345b: 'FmnfaI2pbem0k75t', r5345e: 'FmnfaI2pbem0k75t', r54125: 'FmnfaI2pbem0k75t', r5412a: 'FmnfaI2pbem0k75t',
+      r5412v: 'FmnfaI2pbem0k75t', r54136: 'FmnfaI2pbem0k75t', r5413a: 'FmnfaI2pbem0k75t', r5413v: 'FmnfaI2pbem0k75t', r63014: 'FmnfaI2pbem0k75t', r63015: 'FmnfaI2pbem0k75t', r63017: 'FmnfaI2pbem0k75t', r63018: 'FmnfaI2pbem0k75t',
+      r6301a: 'FmnfaI2pbem0k75t', r6301h: 'FmnfaI2pbem0k75t', r6301r: 'FmnfaI2pbem0k75t', r6301v: 'FmnfaI2pbem0k75t', r64015: 'FmnfaI2pbem0k75t', r64016: 'FmnfaI2pbem0k75t', r6401c: 'FmnfaI2pbem0k75t', r6401k: 'FmnfaI2pbem0k75t',
+      r6401r: 'FmnfaI2pbem0k75t', r6401v: 'FmnfaI2pbem0k75t', r95265: 'FmnfaI2pbem0k75t', r95266: 'FmnfaI2pbem0k75t', r95267: 'FmnfaI2pbem0k75t', r9526a: 'FmnfaI2pbem0k75t', r9526c: 'FmnfaI2pbem0k75t', r9526h: 'FmnfaI2pbem0k75t',
+      r9526k: 'FmnfaI2pbem0k75t', r95275: 'FmnfaI2pbem0k75t', r95276: 'FmnfaI2pbem0k75t', r95277: 'FmnfaI2pbem0k75t', r95278: 'FmnfaI2pbem0k75t', r95279: 'FmnfaI2pbem0k75t', r9527a: 'FmnfaI2pbem0k75t', r9527f: 'FmnfaI2pbem0k75t',
+      r9527v: 'FmnfaI2pbem0k75t', r9537a: 'FmnfaI2pbem0k75t', r9537h: 'FmnfaI2pbem0k75t', r95425: 'FmnfaI2pbem0k75t', r9542a: 'FmnfaI2pbem0k75t', r9542b: 'FmnfaI2pbem0k75t', r9542h: 'FmnfaI2pbem0k75t', r9542t: 'FmnfaI2pbem0k75t',
+      r2210: 'OFULk9To37qRdXY3',
+      p2149o: 'RNO4p35b2QKaovHC',
+      r2211o: 'dndRQ3z8ACjDdDMo',
+      r2250: 'nf3Zi2Mq8jD5AAOm',
+      r2240: 'ojxGnogHfVuefVfx',
+      r2209: 'qFKhvoAqRFTPfKN6',
+      r2254: 'wRy05fYLQJMRH6Mj',
     };
-    if (specific[suffix]) return specific[suffix];
-    // p2114 family
-    if (suffix === 'p2114a' || suffix === 'p2114o') return '6PFiLPYMHLylp7RR';
-    // p2140 family
-    if (suffix.startsWith('p2140')) return '8qnS9dqgT3CppGe1';
-    // 3F0ji4ufBMaH1ThM family
-    const family3F = ['r2243', 'r2312', 'r2312a', 'r2328', 'r2380', 'r2380r', 'r2388', 'r2422', 'r2422a', 'r2422b', 'r2422c'];
-    if (family3F.includes(suffix) || suffix.startsWith('r2458') || suffix.startsWith('r2459') || suffix.startsWith('r2463') || suffix.startsWith('r2478') || suffix.startsWith('r2479') || suffix.startsWith('r249')) return '3F0ji4ufBMaH1ThM';
-    // FmnfaI2pbem0k75t family
-    const familyFm = ['r2251a', 'r2251o', 'r2257o', 'r2317', 'r2345a', 'r2345h', 'r2363', 'r2363a', 'r2363n', 'r2364', 'r2364a', 'r2382a', 'r2382k', 'r2382r', 'r2383a', 'r2383k', 'r2386', 'r2471', 'r2563b', 'r2563v'];
-    if (familyFm.includes(suffix)) return 'FmnfaI2pbem0k75t';
-    // Default IV for most modern models (r2212+, r2253*, r2449*, etc.)
-    return 'NRwnBj5FsNPgBNbT';
+    // Default IV for all other models (r2212+, r2253*, r2449*, X60 family, etc.)
+    return MODEL_IV[suffix] || 'NRwnBj5FsNPgBNbT';
   }
 
   /**
