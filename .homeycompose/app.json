@@ -1,6 +1,6 @@
 {
   "id": "com.dreame.vacuum.cloud",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "compatibility": ">=12.3.0",
   "sdk": 3,
   "platforms": [
@@ -11,14 +11,12 @@
     "en": "Dreame"
   },
   "description": {
-    "en": "Smart Robot Vacuum Control"
+    "en": "Spotless floors, without lifting a finger"
   },
   "category": [
     "appliances"
   ],
-  "permissions": [
-    "homey:manager:api"
-  ],
+  "permissions": [],
   "api": {
     "getVacuumData": {
       "method": "GET",

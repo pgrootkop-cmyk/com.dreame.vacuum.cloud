@@ -1,7 +1,6 @@
 'use strict';
 
 const Homey = require('homey');
-const { HomeyAPI } = require('homey-api');
 const zlib = require('zlib');
 const crypto = require('crypto');
 const DreameApi = require('./lib/DreameApi');
@@ -178,40 +177,11 @@ class DreameApp extends Homey.App {
   }
 
   /**
-   * Resolve a Web API device UUID (what Homey.getDeviceIds() returns in widgets)
-   * to a Dreame DID. SDK Device instances don't expose the Web API UUID, so this
-   * goes through homey-api and matches our driver's devices on data.id.
-   */
-  async _resolveWebApiUuid(uuid) {
-    if (this._uuidToDid && this._uuidToDid.has(uuid)) {
-      return this._uuidToDid.get(uuid);
-    }
-    // Unknown UUID: refresh the map, but at most once per minute
-    const now = Date.now();
-    if (this._uuidMapFetchedAt && now - this._uuidMapFetchedAt < 60000) {
-      return this._uuidToDid ? this._uuidToDid.get(uuid) : undefined;
-    }
-    this._uuidMapFetchedAt = now;
-    try {
-      if (!this._webApi) {
-        this._webApi = await HomeyAPI.createAppAPI({ homey: this.homey });
-      }
-      const webDevices = await this._webApi.devices.getDevices();
-      const uuidToDid = new Map();
-      for (const wd of Object.values(webDevices)) {
-        if (wd.driverId && wd.driverId.includes('com.dreame.vacuum.cloud') && wd.data && wd.data.id != null) {
-          uuidToDid.set(wd.id, wd.data.id);
-        }
-      }
-      this._uuidToDid = uuidToDid;
-    } catch (e) {
-      this.error(`Web API device lookup failed: ${e.message}`);
-    }
-    return this._uuidToDid ? this._uuidToDid.get(uuid) : undefined;
-  }
-
-  /**
-   * Find a vacuum device by Dreame DID or Web API device UUID (from widgets).
+   * Find a vacuum device by Dreame DID or Homey device UUID (from widgets).
+   * Homey.getDeviceIds() in widgets returns the internal device UUID, which is
+   * available at runtime as the (undocumented) __id on SDK Device instances —
+   * verified on Homey Pro. This avoids the homey:manager:api permission, which
+   * the App Store review rejects for device-brand apps.
    * Returns null when an explicit id has no match — falling back to the first
    * device here is what made every widget show the same vacuum (#38).
    */
@@ -219,15 +189,7 @@ class DreameApp extends Homey.App {
     const driver = this.homey.drivers.getDriver('vacuum');
     const devices = driver ? driver.getDevices() : [];
     if (!did) return devices[0] || null;
-    // Match by Dreame DID
-    const byDid = devices.find(d => d.getData().id === did);
-    if (byDid) return byDid;
-    // Match by Web API device UUID (widget Homey.getDeviceIds() returns these)
-    const dreameId = await this._resolveWebApiUuid(did);
-    if (dreameId != null) {
-      return devices.find(d => d.getData().id === dreameId) || null;
-    }
-    return null;
+    return devices.find(d => d.getData().id === did || d.__id === did) || null;
   }
 
   /**
@@ -519,10 +481,6 @@ class DreameApp extends Homey.App {
     if (this._mqtt) {
       this._mqtt.disconnect();
       this._mqtt = null;
-    }
-    if (this._webApi) {
-      try { this._webApi.destroy(); } catch (e) { /* already destroyed */ }
-      this._webApi = null;
     }
   }
 

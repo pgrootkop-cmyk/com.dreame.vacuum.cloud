@@ -85,5 +85,8 @@
   },
   "1.0.3": {
     "en": "Fix stale device state and room triggers for app-started cleans\n\n- Fixed: vacuum state stuck on \"Docked\" while cleaning on newer models (e.g. Matrix 10 Ultra). The state now syncs from the cleaning status, which also restores live map tracking and adaptive polling on those devices.\n- Fixed: \"Room cleaning started/finished\" triggers now also fire for cleans started from the Dreame app or its schedules, based on live room tracking. Previously they only worked for cleans started via Homey flow cards.\n- Unknown device state codes are now logged to help support new models."
+  },
+  "1.0.4": {
+    "en": "App Store review feedback\n\n- Removed the Homey API permission: widgets now resolve their device natively, with no extra permissions.\n- Rewrote the App Store readme and description."
   }
 }
