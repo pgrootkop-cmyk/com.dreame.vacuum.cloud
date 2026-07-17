@@ -82,5 +82,8 @@
   },
   "1.0.2": {
     "en": "X60 support and cleaning-mode fixes\n\n- New: Dreame X60 series support (X60 Ultra, X60 Pro Ultra).\n- Fixed: map decryption keys corrected for 74 newer models (Aqua/X50 variants and others) based on the latest reference data.\n- New: device setting \"Sweeping / Sweeping & Mopping mapping\" (Auto/Normal/Swapped) for models whose firmware inverts these two modes.\n- Docs: FAQ on settings locations, the system \"Start vacuuming\" card, multi-floor toggle, and region selection."
+  },
+  "1.0.3": {
+    "en": "Fix stale device state and room triggers for app-started cleans\n\n- Fixed: vacuum state stuck on \"Docked\" while cleaning on newer models (e.g. Matrix 10 Ultra). The state now syncs from the cleaning status, which also restores live map tracking and adaptive polling on those devices.\n- Fixed: \"Room cleaning started/finished\" triggers now also fire for cleans started from the Dreame app or its schedules, based on live room tracking. Previously they only worked for cleans started via Homey flow cards.\n- Unknown device state codes are now logged to help support new models."
   }
 }
