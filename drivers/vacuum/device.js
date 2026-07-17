@@ -264,6 +264,10 @@ const STATUS_REVERSE = {
   24: 'Summon Clean', 25: 'Shortcut', 26: 'Person Follow', 1501: 'Water Check',
 };
 
+// STATUS values that mean an active cleaning task is running (used to sync
+// vacuumcleaner_state when the STATE property is unmapped/stale — GH #51)
+const ACTIVE_CLEANING_STATUSES = new Set([2, 4, 18, 19, 20, 24, 25]);
+
 // Task status (siid:4, piid:7)
 const TASK_STATUS_REVERSE = {
   0: 'Completed', 1: 'Auto Cleaning', 2: 'Zone Cleaning', 3: 'Segment Cleaning',
@@ -1506,6 +1510,11 @@ class DreameVacuumDevice extends Homey.Device {
     switch (key) {
       case '2-1': { // STATE
 
+        if (STATE_MAP[value] === undefined) {
+          // Log unmapped values — new models introduce state codes that even the
+          // reference integration doesn't know yet (GH #51)
+          this._diag(`[STATE] Unmapped STATE value ${value} — vacuumcleaner_state not updated`, null, 'warning');
+        }
         if (STATE_MAP[value]) {
           const homeyState = STATE_MAP[value];
           const prevHomeyState = this.getCapabilityValue('vacuumcleaner_state');
@@ -1519,6 +1528,11 @@ class DreameVacuumDevice extends Homey.Device {
           // STATUS 18→3 (like zones), with a session-end fallback below.
           if (prevHomeyState === 'cleaning' && homeyState !== 'cleaning') {
             this._wasCleaningSession = true;
+            // Non-card cleans: fire finished for the room the robot was in when the
+            // session ended (entry/exit tracking can't see the last room otherwise)
+            if (this._cleaningRoomIds.length === 0 && this._robotCurrentRoomId != null) {
+              this._fireRoomFinishedForRoom(this._robotCurrentRoomId);
+            }
             this._robotCurrentRoomId = null;
             this._robotPositionRaw = null;
           }
@@ -1964,6 +1978,18 @@ class DreameVacuumDevice extends Homey.Device {
         break;
 
       case '4-1': { // STATUS (cleaning substatus)
+        // Some models report 2-1 STATE values we cannot map (or don't update 2-1 at
+        // all) while actively cleaning, leaving vacuumcleaner_state stale on "Docked"
+        // (GH #51, Matrix 10 Ultra). STATUS is reliable there — sync the main state
+        // when it reports an active cleaning task.
+        if (ACTIVE_CLEANING_STATUSES.has(value)) {
+          const curState = this.getCapabilityValue('vacuumcleaner_state');
+          if (curState !== 'cleaning') {
+            this._diag(`[STATUS] Active cleaning status ${value} but state=${curState} — syncing to cleaning`, null, 'info');
+            await this.setCapabilityValue('vacuumcleaner_state', 'cleaning').catch(this.error);
+            await this.setCapabilityValue('onoff', true).catch(this.error);
+          }
+        }
         // Track zone cleaning: STATUS 19 = Zone Cleaning (Tasshack DreameVacuumStatus.ZONE_CLEANING)
         if (value === 19 && !this._wasCruisingPoint) this._wasZoneCleaning = true;
         // Room cleaning completion: STATUS 18 (Segment Cleaning) → 3 (Returning).
@@ -2725,12 +2751,34 @@ class DreameVacuumDevice extends Homey.Device {
       // Saved map: segId = pixel & 0x3F
       const segId = pixel & 0x3F;
       if (segId > 0 && segId < 61 && segId !== this._robotCurrentRoomId) {
+        const prevRoomId = this._robotCurrentRoomId;
         this._robotCurrentRoomId = segId;
         const room = (this._rooms || []).find(r => r.id === segId);
         const name = room ? room.name : `Room ${segId}`;
         this.setCapabilityValue('dreame_current_room', name).catch(this.error);
+
+        // Fire per-room triggers on live room entry/exit, but only for cleans not
+        // started via Homey cards (those fire from the card path with the exact room
+        // list). Covers cleans started from the Dreame app or its schedules (GH #51).
+        if (this._cleaningRoomIds.length === 0
+          && this.getCapabilityValue('vacuumcleaner_state') === 'cleaning') {
+          if (prevRoomId != null) this._fireRoomFinishedForRoom(prevRoomId);
+          this._fireRoomStartedTriggers([segId]);
+        }
       }
     } catch { /* ignore */ }
+  }
+
+  _fireRoomFinishedForRoom(roomId) {
+    const room = (this._rooms || []).find(r => r.id === roomId);
+    const roomName = room ? room.name : `Room ${roomId}`;
+    const state = { room_id: roomId };
+    this.homey.flow.getDeviceTriggerCard('room_cleaning_finished')
+      .trigger(this, { room_name: roomName }, state)
+      .catch(e => this.error('Room finish trigger:', e));
+    this.homey.flow.getDeviceTriggerCard('room_cleaning_finished_by_id')
+      .trigger(this, { room_name: roomName, room_id: String(roomId) }, state)
+      .catch(e => this.error('Room finish by-id trigger:', e));
   }
 
   /**
