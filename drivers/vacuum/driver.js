@@ -503,28 +503,30 @@ class DreameVacuumDriver extends Homey.Driver {
   async onPair(session) {
     let api = null;
     let country = 'eu';
+    let brand = 'dreame';
 
     session.setHandler('login', async (data) => {
       const username = data.username;
       const password = data.password;
       country = data.region || 'eu';
+      brand = data.brand || 'dreame';
 
-      api = new DreameApi({ username, password, country });
+      api = new DreameApi({ username, password, country, brand });
 
       try {
         const result = await api.login();
-        this.homey.app.setCredentials(username, password, country);
+        this.homey.app.setCredentials(username, password, country, brand);
         if (result.refresh_token) {
           this.homey.app.saveRefreshToken(result.refresh_token);
         }
         if (result.uid) {
           this.homey.app.saveUid(result.uid);
         }
-        this.log('Pairing: login success', { region: country });
+        this.log('Pairing: login success', { region: country, brand });
         return true;
       } catch (err) {
         this.error('Login failed:', err.message);
-        this.log('Pairing: login failed', { region: country, error: err.message });
+        this.log('Pairing: login failed', { region: country, brand, error: err.message });
         throw new Error(`Login failed: ${err.message}`);
       }
     });
@@ -540,10 +542,18 @@ class DreameVacuumDriver extends Homey.Driver {
 
       try {
         const devices = await api.getDevices();
+        const modelPrefix = api.modelPrefix;
+        const fallbackName = `${api.brandLabel} Vacuum`;
         const vacuums = devices
-          .filter(d => d.model && d.model.startsWith('dreame.vacuum.'))
+          .filter(d => d.model && d.model.startsWith(modelPrefix))
           .map(device => ({
-            name: device.customName || device.name || 'Dreame Vacuum',
+            // deviceInfo.displayName carries the marketing name the vendor app
+            // shows (e.g. "V70 Ultra Complete X"); without it every device that
+            // the user never renamed ends up with the generic fallback.
+            name: device.customName
+              || device.name
+              || (device.deviceInfo && device.deviceInfo.displayName)
+              || fallbackName,
             data: {
               id: device.did,
             },
@@ -551,6 +561,7 @@ class DreameVacuumDriver extends Homey.Driver {
               model: device.model,
               bindDomain: device.bindDomain || '',
               masterUid: device.uid || '',
+              brand,
             },
           }));
 
@@ -868,12 +879,13 @@ class DreameVacuumDriver extends Homey.Driver {
       const username = data.username;
       const password = data.password;
       const country = this.homey.settings.get('country') || 'eu';
+      const brand = this.homey.settings.get('brand') || 'dreame';
 
-      const api = new DreameApi({ username, password, country });
+      const api = new DreameApi({ username, password, country, brand });
 
       try {
         const result = await api.login();
-        this.homey.app.setCredentials(username, password, country);
+        this.homey.app.setCredentials(username, password, country, brand);
         if (result.refresh_token) {
           this.homey.app.saveRefreshToken(result.refresh_token);
         }

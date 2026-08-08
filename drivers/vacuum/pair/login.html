@@ -6,7 +6,16 @@
     <fieldset class="homey-form-fieldset">
       <legend class="homey-form-legend">Dreame Home Region</legend>
       <div class="homey-form-group">
-        <label class="homey-form-label" for="region">Region selected during Dreame Home signup</label>
+        <label class="homey-form-label" for="brand">Account type</label>
+        <select class="homey-form-select" id="brand">
+          <option value="dreame" selected>Dreame Home</option>
+          <option value="mova">MOVAhome</option>
+          <option value="trouver">Trouver</option>
+        </select>
+      </div>
+
+      <div class="homey-form-group">
+        <label class="homey-form-label" for="region">Region selected during signup</label>
         <select class="homey-form-select" id="region">
           <option value="eu" selected>Europe</option>
           <option value="cn">China</option>
@@ -39,6 +48,7 @@
       var username = document.getElementById('username').value.trim();
       var password = document.getElementById('password').value;
       var region = document.getElementById('region').value;
+      var brand = document.getElementById('brand').value;
 
       if (!username || !password) {
         Homey.alert('Please enter your email and password.');
@@ -48,7 +58,7 @@
       btn.classList.add('is-loading');
       btn.disabled = true;
 
-      Homey.emit('login', { username: username, password: password, region: region })
+      Homey.emit('login', { username: username, password: password, region: region, brand: brand })
         .then(function () {
           Homey.showView('list_devices');
         })
