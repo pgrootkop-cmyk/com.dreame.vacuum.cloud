@@ -42,9 +42,10 @@ class DreameApp extends Homey.App {
     const username = this.homey.settings.get('username');
     const password = this.homey.settings.get('password');
     const country = this.homey.settings.get('country') || 'eu';
+    const brand = this.homey.settings.get('brand') || 'dreame';
 
     if (username && password) {
-      this._api = new DreameApi({ username, password, country });
+      this._api = new DreameApi({ username, password, country, brand });
       this._wireApi();
     }
   }
@@ -111,15 +112,33 @@ class DreameApp extends Homey.App {
     return this._mqtt;
   }
 
-  setCredentials(username, password, country) {
+  setCredentials(username, password, country, brand) {
     this.homey.settings.set('username', username);
     this.homey.settings.set('password', password);
     this.homey.settings.set('country', country || 'eu');
+    this.homey.settings.set('brand', brand || 'dreame');
+
+    // A new login invalidates the previous session. The uid in particular is
+    // the MQTT username, so a uid left over from another account (or another
+    // brand's cloud) makes the broker answer "Not authorized" forever.
+    // _wireApi() below restores whatever is still in settings, so anything
+    // belonging to the previous session has to be cleared here or it comes
+    // straight back: the access token would keep every request authenticated
+    // as the previous account, and the uid is the MQTT username.
+    for (const key of ['accessToken', 'tokenExpiry', 'refreshToken', 'uid', 'tenantId', 'region']) {
+      this.homey.settings.unset(key);
+    }
+    if (this._api) {
+      this._api.accessToken = null;
+      this._api.tokenExpiry = 0;
+      this._api.refreshToken = null;
+      this._api.uid = null;
+    }
 
     if (this._api) {
-      this._api.setCredentials({ username, password, country });
+      this._api.setCredentials({ username, password, country, brand });
     } else {
-      this._api = new DreameApi({ username, password, country });
+      this._api = new DreameApi({ username, password, country, brand });
     }
 
     this._wireApi();
@@ -222,7 +241,8 @@ class DreameApp extends Homey.App {
    */
   _getMapIv(model) {
     if (!model) return null;
-    const suffix = model.replace('dreame.vacuum.', '');
+    // Strip whatever brand prefix the model carries (dreame./mova./trouver.).
+    const suffix = model.replace(/^[a-z]+\.vacuum\./, '');
     // Explicit non-default IVs, generated from Tasshack DEVICE_INFO (dev branch,
     // v2.0.0b25). Every model not listed here uses the default IV — including the
     // X60 family (r5089b/r5089u/r6001a/r9515*). Replaces the old prefix heuristics,

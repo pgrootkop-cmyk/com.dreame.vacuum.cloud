@@ -1,5 +1,5 @@
 {
-  "name": { "en": "Dreame Vacuum" },
+  "name": { "en": "Dreame / Mova / Trouver Vacuum", "nl": "Dreame / Mova / Trouver stofzuiger" },
   "class": "vacuumcleaner",
   "images": {
     "small": "{{driverAssetsPath}}/small.png",
