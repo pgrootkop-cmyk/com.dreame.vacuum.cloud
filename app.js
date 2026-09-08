@@ -118,6 +118,16 @@ class DreameApp extends Homey.App {
     this.homey.settings.set('country', country || 'eu');
     this.homey.settings.set('brand', brand || 'dreame');
 
+    // A new login invalidates the previous session. The uid in particular is
+    // the MQTT username, so a uid left over from another account (or another
+    // brand's cloud) makes the broker answer "Not authorized" forever.
+    this.homey.settings.unset('refreshToken');
+    this.homey.settings.unset('uid');
+    if (this._api) {
+      this._api.refreshToken = null;
+      this._api.uid = null;
+    }
+
     if (this._api) {
       this._api.setCredentials({ username, password, country, brand });
     } else {
