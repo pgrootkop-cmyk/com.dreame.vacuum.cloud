@@ -1083,7 +1083,7 @@ class DreameVacuumDevice extends Homey.Device {
         return;
       }
 
-      const mqttClient = this.homey.app.getMqtt();
+      const mqttClient = this.homey.app.getMqtt(this._did);
 
       // Remove previous listeners from this device (prevent leaks)
       this._removeMqttListeners(mqttClient);
@@ -1255,7 +1255,7 @@ class DreameVacuumDevice extends Homey.Device {
       await this._fetchBindDomain();
 
       // Clean up old listeners and reconnect
-      const mqttClient = this.homey.app.getMqtt();
+      const mqttClient = this.homey.app.getMqtt(this._did);
       this._removeMqttListeners(mqttClient);
       this._stopMapRefreshTimer();
 
@@ -1297,7 +1297,7 @@ class DreameVacuumDevice extends Homey.Device {
       await api.login();
       this.homey.app.saveUid(api.uid);
       // updateToken triggers reconnect with fresh credentials
-      const mqttClient = this.homey.app.getMqtt();
+      const mqttClient = this.homey.app.getMqtt(this._did);
       mqttClient.updateToken(api.accessToken);
     } catch (e) {
       this.error('[MQTT] Token refresh failed:', e.message);
@@ -1376,7 +1376,7 @@ class DreameVacuumDevice extends Homey.Device {
         this._diag('[MAP] Skipping map request — device is cleaning', null, 'debug');
         return;
       }
-      const mqttClient = this.homey.app.getMqtt();
+      const mqttClient = this.homey.app.getMqtt(this._did);
       if (!mqttClient || !mqttClient.connected) {
         this._diag('[MAP] Skipping map request — MQTT not connected', null, 'debug');
         return;
@@ -3678,9 +3678,8 @@ class DreameVacuumDevice extends Homey.Device {
       this.homey.clearTimeout(this._mapResponseTimeout);
       this._mapResponseTimeout = null;
     }
-    // Only remove our listeners — don't disconnect the shared MQTT singleton
-    // (other devices may still be using it; app.onUninit() handles disconnect)
     this._removeMqttListeners();
+    this.homey.app.releaseMqtt(this._did);
   }
 
 }
