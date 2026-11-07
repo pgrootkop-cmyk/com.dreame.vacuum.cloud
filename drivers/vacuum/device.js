@@ -268,6 +268,9 @@ const STATUS_REVERSE = {
 // vacuumcleaner_state when the STATE property is unmapped/stale — GH #51)
 const ACTIVE_CLEANING_STATUSES = new Set([2, 4, 18, 19, 20, 24, 25]);
 
+// Task status values for an active (not paused) cleaning task
+const ACTIVE_TASK_STATUSES = new Set([1, 2, 3, 4]);
+
 // Task status (siid:4, piid:7)
 const TASK_STATUS_REVERSE = {
   0: 'Completed', 1: 'Auto Cleaning', 2: 'Zone Cleaning', 3: 'Segment Cleaning',
@@ -1545,10 +1548,6 @@ class DreameVacuumDevice extends Homey.Device {
             const area = this.getCapabilityValue('dreame_cleaned_area') || 0;
             const time = this.getCapabilityValue('dreame_cleaning_time') || 0;
 
-            const finishedCard = this.homey.flow.getDeviceTriggerCard('cleaning_finished');
-            finishedCard.trigger(this, { cleaned_area: area, cleaning_time: time })
-              .catch(e => this.error('Cleaning finished trigger:', e));
-
             if (this._wasZoneCleaning) {
               const zoneName = this._lastZoneName || '';
               const zoneId = this._lastZoneId || '';
@@ -2041,11 +2040,24 @@ class DreameVacuumDevice extends Homey.Device {
         break;
       }
 
-      case '4-7': // TASK_STATUS
+      case '4-7': { // TASK_STATUS
         if (TASK_STATUS_REVERSE[value] !== undefined) {
           await this.setCapabilityValue('dreame_task_status', TASK_STATUS_REVERSE[value]).catch(this.error);
         }
+        // The task only becomes Completed (0) when the whole job is done. Mid-clean
+        // dock visits (mop wash, emptying) keep the task active, so they don't fire this.
+        // Paused tasks (6-9) are excluded: stopping a clean is not finishing it.
+        const prevTask = this._lastTaskStatus;
+        this._lastTaskStatus = value;
+        if (value === 0 && ACTIVE_TASK_STATUSES.has(prevTask)) {
+          const area = this.getCapabilityValue('dreame_cleaned_area') || 0;
+          const time = this.getCapabilityValue('dreame_cleaning_time') || 0;
+          this.homey.flow.getDeviceTriggerCard('cleaning_finished')
+            .trigger(this, { cleaned_area: area, cleaning_time: time })
+            .catch(e => this.error('Cleaning finished trigger:', e));
+        }
         break;
+      }
 
       case '4-53': // MOP_PAD_INSTALLED
         await this.setCapabilityValue('dreame_mop_pad_installed', !!value).catch(this.error);
